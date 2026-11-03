@@ -1,3 +1,26 @@
+## 2.0.5
+
+- Station Street (`mango`) support: a new audio profile with shared audio,
+  voice control, ducking and LED indication. The 4-LED ring and 3-logo
+  topology is addressed through the station's sysfs entries, and ring count
+  is discovered from `led.ring.N`, so four-LED rings no longer fall back to
+  the three-LED path. Native volume and native player stay off; the Alice
+  button is disabled because the input device is not qualified.
+- The arch gate compares the kernel architecture through `uname` instead of
+  the Luna binary. An armv7 Luna on an aarch64 kernel (Station Street) is now
+  accepted instead of blocking the receiver.
+- `yam/luna >=0.2.20` is a hard dependency on the seven targets whose Luna
+  artifacts already exist. `orion`, `yandexmidi`, `yandexplum` and `mango`
+  keep it as a recommendation until their artifacts (or platform aliases)
+  are published, because a hard dependency there makes installation fail.
+- Station Street ships with the autostart postinstall hook, so a fresh
+  install enables and starts the plugin without the Luna app.
+
+Station Street was qualified on the emulator only: installation, autostart,
+voice controls and the exact LED frames the receiver sends were verified
+through Luna's runtime API. The emulator has no AirPlay sender, so real
+playback, microphone and physical LEDs remain unverified.
+
 ## 2.0.4
 
 - The install hook speaks JSON to the Luna API. A stock Luna rejects a form
