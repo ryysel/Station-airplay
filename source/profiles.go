@@ -70,6 +70,9 @@ func run(ctx context.Context, sharedAudio bool) error {
 	return runWithControls(ctx, sharedAudio, nil)
 }
 func runWithControls(ctx context.Context, sharedAudio bool, controls *controlsConfig) error {
+	if controls != nil && controls.VoicePauseOnly {
+		return errors.New("voice_pause_only requires explicit standalone Mini 2 mode")
+	}
 	api, err := newYAMAPI()
 	if err != nil {
 		return err
@@ -554,7 +557,13 @@ func serveSharedControls(ctx context.Context, p stationProfile, api *yamAPI, d y
 		controlsStarted = true
 		go func() {
 			defer close(controlDone)
-			if e := serveControls(ctx, bus, api, d, *controls); e != nil {
+			var e error
+			if api == nil {
+				e = serveStandaloneVolume(ctx, bus, *controls)
+			} else {
+				e = serveControls(ctx, bus, api, d, *controls)
+			}
+			if e != nil {
 				controlErrors <- e
 			}
 		}()

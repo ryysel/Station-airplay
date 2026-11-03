@@ -1,5 +1,14 @@
 # Opt-in shared controls: voice, native volume and indication
 
+Mini 2 on plain YAM 0.2.x can opt into the separate
+[`--standalone` native-volume mode](STANDALONE_VOLUME.md) without a runtime
+host. It requires an explicit guarded station-volume launcher and supports
+native volume plus optional exact pause/stop via `voice_pause_only=true`.
+The option is rejected on a runtime host; full `voice` controls below keep
+their existing permission and claim path. Standalone does not replace the Luna/legacy YAM path
+or bypass runtime authentication errors. Stock volume indication still comes
+from Quasar, not from the plugin's LED renderer.
+
 These controls extend the existing supervisor; they are not a replacement receiver
 stack, extra resident manager, log follower or global ALSA/Quasar modification.
 They are disabled by default and enabled with `--controls-config`. The original

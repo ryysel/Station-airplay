@@ -353,6 +353,9 @@ func controlsVolume(ctx context.Context, api *yamAPI, d yamDevice, cfg controlsC
 	}
 }
 func controlsPreflight(ctx context.Context, api *yamAPI, d yamDevice, cfg *controlsConfig) error {
+	if cfg.VoicePauseOnly {
+		return errors.New("voice_pause_only requires explicit standalone Mini 2 mode")
+	}
 	var caps struct {
 		Version  int  `json:"version"`
 		Speech   bool `json:"speech"`
