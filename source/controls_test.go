@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"math"
 	"os"
 	"path/filepath"
@@ -276,6 +277,12 @@ func TestControlUnknownLEDBackendSkipped(t *testing.T) {
 	}
 	if supportedLEDCount(yamDevice{Features: []string{"led.ring.6", "led.ring.rgb"}}) != 6 {
 		t.Fatal("Mini2 declared ring not recognised")
+	}
+	for size := range map[int]bool{3: true, 4: true, 6: true, 12: true, 24: true, 36: true} {
+		dev := yamDevice{Features: []string{fmt.Sprintf("led.ring.%d", size), "led.ring.rgb"}}
+		if got := supportedLEDCount(dev); got != size {
+			t.Fatalf("led.ring.%d reported %d", size, got)
+		}
 	}
 }
 

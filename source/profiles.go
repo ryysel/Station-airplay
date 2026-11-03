@@ -69,6 +69,25 @@ func (l *boundedLog) Write(b []byte) (int, error) {
 func run(ctx context.Context, sharedAudio bool) error {
 	return runWithControls(ctx, sharedAudio, nil)
 }
+
+// kernelArch reports the machine the kernel runs, not the userspace ABI this
+// binary was built for. Station Street and Light 2 run ARMhf userspace on an
+// AArch64 kernel, so the shared-audio contract must follow uname.
+func kernelArch() string {
+	var u syscall.Utsname
+	if err := syscall.Uname(&u); err != nil {
+		return ""
+	}
+	b := make([]byte, 0, len(u.Machine))
+	for _, c := range u.Machine {
+		if c == 0 {
+			break
+		}
+		b = append(b, byte(c))
+	}
+	return string(b)
+}
+
 func runWithControls(ctx context.Context, sharedAudio bool, controls *controlsConfig) error {
 	api, err := newYAMAPI()
 	if err != nil {
@@ -106,7 +125,7 @@ func runWithControls(ctx context.Context, sharedAudio bool, controls *controlsCo
 			return err
 		}
 	}
-	if d.Architecture != "aarch64" {
+	if kernelArch() != "aarch64" {
 		return errors.New("shared profiles require an AArch64 kernel")
 	}
 	return runSharedControls(ctx, p, api, d, controls)

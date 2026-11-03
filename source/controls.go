@@ -10,6 +10,8 @@ import (
 	"io"
 	"math"
 	"os"
+	"strconv"
+	"strings"
 	"time"
 )
 
@@ -715,10 +717,18 @@ func supportedLEDCount(d yamDevice) int {
 	if !feature(d, "led.ring.rgb") {
 		return 0
 	}
-	for _, n := range []int{3, 6, 12, 24} {
-		if feature(d, fmt.Sprintf("led.ring.%d", n)) {
-			return n
+	// The ring size is advertised per model (3, 4, 6, 12, 24, 36...). Read the
+	// number instead of keeping a list that silently disables new stations.
+	count := 0
+	for _, f := range d.Features {
+		value, ok := strings.CutPrefix(f, "led.ring.")
+		if !ok || value == "rgb" {
+			continue
+		}
+		n, err := strconv.Atoi(value)
+		if err == nil && n > count {
+			count = n
 		}
 	}
-	return 0
+	return count
 }
