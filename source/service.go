@@ -215,7 +215,12 @@ var (
 	// Shared audio-only profiles: no clock/RGB requirements, Alice stays running.
 	mini2Profile      = stationProfile{name: "Yandex Mini 2 AirPlay", models: []string{"yandexmini_2"}, pcm: "default", quasarCoexist: true, mdnsHostPrefix: "yandexmini-2", receiverABI: "armhf", airplayModel: "AudioAccessory5,1"}
 	plumSharedProfile = stationProfile{name: "Yandex Lite 2 AirPlay", models: []string{"yandexplum", "plum"}, pcm: "speakers", quasarCoexist: true, mdnsHostPrefix: "YandexLite-gen2", receiverABI: "armhf", airplayModel: "AudioAccessory5,1"}
-	profiles          = []stationProfile{plumProfile, midiProfile, mini2Profile,
+	// Station Street (mango) runs ARMhf userspace with the stock Quasar stack
+	// (q, quasar.cfg, quasar_launcher2). The control bridge is not qualified on
+	// a live unit yet, so the package ships audio-only; if controls are ever
+	// requested the receiver degrades with a logged reason instead of exiting.
+	mangoProfile = stationProfile{name: "Yandex Station Street AirPlay", models: []string{"mango"}, pcm: "default", quasarCoexist: true, mdnsHostPrefix: "yandex-station-street", receiverABI: "armhf", airplayModel: "AudioAccessory5,1"}
+	profiles     = []stationProfile{mangoProfile, plumProfile, midiProfile, mini2Profile,
 		{name: "Yandex Station 2 AirPlay", models: []string{"yandexstation_2"}, pcm: "plug:dmix_spk", quasarCoexist: true, mdnsHostPrefix: "yandex-station-gen2", receiverABI: "armhf", airplayModel: "AudioAccessory1,1"},
 		// Station 3 (orion) reports its own model id. Like the original Mini it
 		// ships no usable system D-Bus daemon, so run the packaged ARMhf one

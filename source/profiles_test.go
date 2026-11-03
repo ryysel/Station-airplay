@@ -53,6 +53,7 @@ func TestSharedProfilesKeepProvenAudioContract(t *testing.T) {
 		{"yandexmicro", "plug:dmix_spk", "armhf", "AudioAccessory5,1"},
 		{"yandexmini", "softvol", "armhf", "AudioAccessory5,1"},
 		{"YandexStationMini", "softvol", "armhf", "AudioAccessory5,1"},
+		{"mango", "default", "armhf", "AudioAccessory5,1"},
 	} {
 		t.Run(tc.model, func(t *testing.T) {
 			p, ok := profileFor(tc.model)
