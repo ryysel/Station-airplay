@@ -9,10 +9,14 @@
 - The arch gate compares the kernel architecture through `uname` instead of
   the Luna binary. An armv7 Luna on an aarch64 kernel (Station Street) is now
   accepted instead of blocking the receiver.
-- `yam/luna >=0.2.20` is a hard dependency on the seven targets whose Luna
-  artifacts already exist. `orion`, `yandexmidi`, `yandexplum` and `mango`
-  keep it as a recommendation until their artifacts (or platform aliases)
-  are published, because a hard dependency there makes installation fail.
+- `yam/luna >=0.2.20` is now a package dependency. The registry stores
+  dependency metadata once per version, not per target, so the published
+  2.0.5 version requires Luna on every target even though the artifact
+  manifests for `orion`, `yandexmidi`, `yandexplum` and `mango` only
+  recommend it. On those four a fresh install waits for a Luna release with
+  their artifacts (or platform aliases); devices that already run Luna
+  >=0.2.20 install normally because the installed version satisfies the
+  dependency.
 - Station Street ships with the autostart postinstall hook, so a fresh
   install enables and starts the plugin without the Luna app.
 
