@@ -1,3 +1,14 @@
+## 2.0.6
+
+- The supervisor reports 2.0.6 and `plugin.toml` ships 2.0.6. The 2.0.5
+  registry artifacts were built before the version bump and still reported
+  2.0.4 internally, so this patch release supersedes them.
+- Mini (`yandexmini`) is audio-only again. 2.0.5 accidentally shipped the
+  shared-controls config for it; the model is not qualified, so its launcher
+  now passes `--shared-audio` only, as in 2.0.4.
+- No behaviour change for the other models. The registry targets and the rest
+  of the package contents match 2.0.5.
+
 ## 2.0.5
 
 - Station Street (`mango`) support: a new audio profile with shared audio,
