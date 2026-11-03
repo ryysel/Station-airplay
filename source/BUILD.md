@@ -77,7 +77,7 @@ python3 scripts/package.py
 
 UPX меняет только супервизор; `upx -t` проверяет целостность упаковки. Сторонние ELF и библиотеки так не сжимайте. При смене упаковщика дополнительно проверьте запуск и определение каталога через `os.Executable()` на целевых ядрах.
 
-Упаковщик берёт `plugin.toml`, `bin/`, `lib/`, `config/`, `LICENSES/` и `third_party/licenses/`. Версия берётся из `plugin.toml`; для 2.0.6 результат — `dist/station-airplay-2.0.6.yap`. Скрипт печатает путь и SHA256. Исходники, документация и исходные архивы сторонних компонентов в пакет не входят.
+Упаковщик берёт `plugin.toml`, `bin/`, `lib/`, `config/`, `LICENSES/` и `third_party/licenses/`. Версия берётся из `plugin.toml`; для 2.0.7 результат — `dist/station-airplay-2.0.7.yap`. Скрипт печатает путь и SHA256. Исходники, документация и исходные архивы сторонних компонентов в пакет не входят.
 
 Без UPX `python3 scripts/package.py` тоже создаст архив, но его размер может не пройти релизный лимит. Для проверки пакета с Python 3.11+:
 
@@ -89,7 +89,7 @@ python3 tests/test_package.py
 
 ## `.yap` и `.yampkg` — разные результаты
 
-Упаковщик этого репозитория создаёт универсальный legacy `.yap` с ID `station-airplay`. Модельные `.yampkg` релиза 2.0.6 содержат манифест YAM v2, launcher Luna, начальный JSON и `postinstall`. Их ID в Luna — `airplay.airplay-luna`.
+Упаковщик этого репозитория создаёт универсальный legacy `.yap` с ID `station-airplay`. Модельные `.yampkg` релиза 2.0.7 содержат манифест YAM v2, launcher Luna, начальный JSON и `postinstall`. Их ID в Luna — `airplay.airplay-luna`.
 
 Инструмента сборки этих `.yampkg` в текущем дереве нет. `go build` и `scripts/package.py` не воспроизводят их оболочку. Для установки готового пакета v2 используйте [Releases](https://github.com/ryysel/Station-airplay/releases) или реестр по [инструкции](../docs/INSTALLATION.md).
 

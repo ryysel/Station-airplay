@@ -29,7 +29,7 @@ import (
 )
 
 const (
-	version      = "Station airplay 2.0.6"
+	version      = "Station airplay 2.0.7"
 	audioFIFO    = "/tmp/sps.fifo"
 	metadataFIFO = "/tmp/shairport-sync-ap2-metadata"
 	brightness   = 170
@@ -228,7 +228,7 @@ var (
 		// AirPlay 2 boards.
 		{name: "Yandex Station 3 AirPlay", models: []string{"yandexstation_3"}, pcm: "speakers", quasarCoexist: true, mdnsHostPrefix: "yandex-station-3", receiverABI: "armhf", airplayModel: "AudioAccessory5,1", packagedDBus: true},
 		{name: "Yandex Mini 3 Pro AirPlay", models: []string{"yandexmini_3_pro"}, pcm: "speakers", quasarCoexist: true, mdnsHostPrefix: "Yandex-Station-Mini-3-Pro", receiverABI: "aarch64", airplayModel: "AudioAccessory5,1"},
-		{name: "Yandex Mini 3 AirPlay", models: []string{"bergamot"}, pcm: "speakers", quasarCoexist: true, mdnsHostPrefix: "YandexMini3", receiverABI: "armhf", airplayModel: "AudioAccessory5,1"},
+		{name: "Yandex Mini 3 AirPlay", models: []string{"yandexmini3", "bergamot"}, pcm: "speakers", quasarCoexist: true, mdnsHostPrefix: "YandexMini3", receiverABI: "armhf", airplayModel: "AudioAccessory5,1"},
 		{name: "Yandex Station Lite AirPlay", models: []string{"yandexmicro"}, pcm: "plug:dmix_spk", quasarCoexist: true, mdnsHostPrefix: "yandexmicro", receiverABI: "armhf", airplayModel: "AudioAccessory5,1"},
 		// Mini (Amlogic AXG, Linkplay firmware): ARMhf userspace on an AArch64
 		// kernel. Quasar's default is plug -> softvol "Master" -> dmix "dmixer"

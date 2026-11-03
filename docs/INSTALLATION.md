@@ -68,10 +68,10 @@
 
 ## Установка из файла `.yampkg`
 
-Скачайте архив своей платформы из [Releases](https://github.com/ryysel/Station-airplay/releases). Например, для Станции 2 в релизе 2.0.6:
+Скачайте архив своей платформы из [Releases](https://github.com/ryysel/Station-airplay/releases). Например, для Станции 2 в релизе 2.0.7:
 
 ```sh
-yam install ./station-airplay-2.0.6-yandexstation_2.yampkg
+yam install ./station-airplay-2.0.7-yandexstation_2.yampkg
 ```
 
 YAM проверит платформу и распакует пакет. Включение в Luna работает так же, как при установке из реестра. Для другой станции выберите соответствующий файл релиза; не переименовывайте чужой архив и не подменяйте model ID.
@@ -117,7 +117,7 @@ wget -q -O - --header='Content-Type: application/json' --post-data='{}' \
 Для совместимого старого YAM с командами `enable`, `ps` и `logs`:
 
 ```sh
-yam install ./dist/station-airplay-2.0.6.yap
+yam install ./dist/station-airplay-2.0.7.yap
 yam enable station-airplay
 yam ps
 yam logs station-airplay

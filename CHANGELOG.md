@@ -1,3 +1,13 @@
+## 2.0.7
+
+- Fix the Mini 3 (`bergamot`) package. Luna identifies the device as
+  `yandexmini3`, but the plugin manifest listed only `bergamot`, so Luna
+  rejected the package with "package is incompatible: requires model
+  [bergamot], detected yandexmini3". The profile and the manifest now accept
+  both ids. Found on the kuyase Mini 3 emulator; the same Luna model id is
+  reported on the real speaker.
+- No other behaviour changes.
+
 ## 2.0.6
 
 - The supervisor reports 2.0.6 and `plugin.toml` ships 2.0.6. The 2.0.5
