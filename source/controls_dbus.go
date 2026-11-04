@@ -266,24 +266,6 @@ func runControlLoop(ctx context.Context, c *sharedController, api *yamAPI, cfg c
 // runtime API decides: a Luna invocation gets Luna's /api/volume, a legacy YAM
 // host keeps the station-volume package. An explicit volume_dependency always
 // means the package, so existing device configurations keep their behaviour.
-// lunaWriteIsSlow times one write of the current level. A host that owns
-// Quasar's IPC answers in a few hundred milliseconds; a host that still probes
-// the closed volume_manager port takes about a second and would make the
-// sender's slider lag, so the caller keeps its direct ALSA path there.
-func lunaWriteIsSlow(ctx context.Context, v *lunaControlVolume) (bool, error) {
-	current, err := v.GetVolume(ctx)
-	if err != nil {
-		return false, err
-	}
-	step, done := context.WithTimeout(ctx, 4*time.Second)
-	defer done()
-	started := time.Now()
-	if _, err := v.SetVolume(step, int(current)); err != nil {
-		return false, err
-	}
-	return time.Since(started) > 800*time.Millisecond, nil
-}
-
 func controlsVolume(ctx context.Context, api *yamAPI, d yamDevice, cfg controlsConfig) (volumeControl, error) {
 	if !cfg.NativeVolume {
 		return nil, nil
@@ -306,32 +288,21 @@ func controlsVolume(ctx context.Context, api *yamAPI, d yamDevice, cfg controlsC
 	case volumeBackendLuna:
 		// Luna owns the station volume. Since 0.2.17 it writes Quasar's logical
 		// level as well as ALSA, so the sender's slider, the station buttons,
-		// the ring and Alice share one state; writing ALSA here instead would
-		// leave Quasar stale and the next button press would jump back. Older
-		// Luna retries the closed volume_manager port first and needs about a
-		// second per step, which is why the direct path still exists for that
-		// portless case. One no-op write at startup tells the two apart.
+		// the ring and Alice share one state. A direct ALSA write leaves Quasar
+		// stale, and on Station 2 and Lite 2 the audible level follows Quasar,
+		// so the sender's slider would look dead even though amixer reported
+		// success. The mixer therefore stays a per-call fallback only.
 		v, err := newLunaControlVolume(api)
-		if err == nil {
-			slow, perr := lunaWriteIsSlow(ctx, v)
-			if perr == nil && !slow {
-				fmt.Printf("station volume: the sender's slider sets the station volume via %s\n", v.Backend())
-				return v, nil
-			}
-			if cfg.VolumeBackend == "" && !volumeManagerListening() {
-				if alsa, aerr := newALSAControlVolume(v); aerr == nil {
-					fmt.Printf("station volume: the sender's slider sets the station volume via %s\n", alsa.Backend())
-					return alsa, nil
-				}
-			}
-			if perr != nil {
-				err = perr
-			}
+		if err != nil {
+			return nil, err
 		}
-		if err == nil {
-			fmt.Printf("station volume: the sender's slider sets the station volume via %s\n", v.Backend())
+		var fallback volumeControl
+		if alsa, aerr := newALSAControlVolume(nil); aerr == nil {
+			fallback = alsa
 		}
-		return v, err
+		owner := &resilientVolume{luna: v, fallback: fallback}
+		fmt.Printf("station volume: the sender's slider sets the station volume via %s\n", owner.Backend())
+		return owner, nil
 	case volumeBackendPackage:
 		var v volumeControl
 		var err error

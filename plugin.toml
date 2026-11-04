@@ -1,6 +1,6 @@
 id = "station-airplay"
 name = "Station airplay"
-version = "2.0.8"
+version = "2.0.9"
 entry = "bin/station-airplay"
 description = "AirPlay 2 для Яндекс Станций: общий звук с Алисой, голосовое управление и кнопка Алисы (пауза/продолжить), громкость синхронно с телефоном в обе стороны, мультирум, индикация и часы"
 permissions = ["exec", "clock", "led", "ipc.speech", "commands"]

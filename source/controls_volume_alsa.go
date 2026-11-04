@@ -9,10 +9,12 @@ package main
 // it, so every Luna write first retries the dead port for about a second and
 // the sender's slider ends up seconds behind the phone.
 //
-// The plugin chooses this backend only when that port is not listening, so a
-// firmware with a working manager keeps Luna's path. The ALSA mixer is still the
-// canonical station level on the fallback boards: Luna's GET reads the same
-// control, and the station buttons and Alice write it as well.
+// The plugin now keeps Luna as the owner and uses this backend only while
+// /api/volume is failing, because writing the mixer alone does not update the
+// logical Quasar level that Station 2 and Lite 2 follow. The ALSA mixer is still
+// the canonical station level on boards without a Quasar volume path: Luna's
+// GET reads the same control, and the station buttons and Alice write it as
+// well.
 //
 // The mixer control can appear only after the first PCM open on softvol
 // firmware, so Luna stays as a per-call fallback instead of a startup veto.

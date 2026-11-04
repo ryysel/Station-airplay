@@ -1,3 +1,15 @@
+## 2.0.9
+
+- Keep Luna as the station-volume owner on every board. The old automatic
+  choice fell back to the direct ALSA mixer for the whole boot when the first
+  `/api/volume` write took longer than 800 ms, which happens while Quasar and
+  mediad are still publishing their IPC on a cold start. On Station 2 and
+  Lite 2 writing `Master` does not update Quasar's logical level, so the
+  sender's slider did not change the audible volume even though `amixer`
+  reported success. The mixer is now a per-call fallback while Luna is
+  failing, and Luna is retried every three seconds.
+- No other behaviour changes.
+
 ## 2.0.8
 
 - Station 2, Mini 2 and Lite 2 now ship `native_player` and `alice_button`
