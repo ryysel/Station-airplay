@@ -1,3 +1,13 @@
+## 2.0.8
+
+- Station 2, Mini 2 and Lite 2 now ship `native_player` and `alice_button`
+  enabled in the seeded controls template. Previously the launcher had to
+  probe `/api/device` and the stock Quasar CLI at first start; if that probe
+  raced Luna or failed, `alice_button` stayed off even on a qualified model.
+  The runtime still disables either flag when the CLI, voice or keypad is
+  missing, so emulators and audio-only models keep working.
+- No other behaviour changes.
+
 ## 2.0.7
 
 - Fix the Mini 3 (`bergamot`) package. Luna identifies the device as
