@@ -24,7 +24,8 @@ launcher, а `scripts/package_yampkg.py` пересобирает пакеты �
 | `yandexmini` | только громкость | добавлен `--controls-config`; остальные флаги выключены |
 | `yandexmicro` | голос, ducking, громкость, индикация; native player при наличии Quasar CLI | без изменений |
 | `mango` | голос, ducking, индикация | без изменений |
-| `orion`, `bergamot` | только звук | без изменений |
+| `orion` | только звук | без изменений |
+| `bergamot` (Мини 3) | полный набор | включён controls-config; нативная громкость требует исправления Luna для проверенной прошивки |
 | `pickle` (Мини 3 Про) | только звук | новая цель: база `bergamot`, AArch64-приёмник и `libplist`, model ID `yandexmini_3_pro` |
 
 `led_level` остаётся 200 у всех целей. Для аудио-профилей JSON всё равно

@@ -42,7 +42,7 @@ assert set(by_target) == {
 for name in ("yandexmidi", "cucumber", "yandexmini"):
     assert by_target[name]["controls_config"], name
 assert not by_target["orion"]["controls_config"]
-assert not by_target["bergamot"]["controls_config"]
+assert by_target["bergamot"]["controls_config"]
 assert by_target["yandexmidi"]["config"]["native_player"]
 assert by_target["yandexmidi"]["config"]["alice_button"]
 assert by_target["cucumber"]["config"]["native_player"]
@@ -67,7 +67,7 @@ full = {
     "native_player": True,
     "alice_button": True,
 }
-for name in ("plum", "yandexplum", "yandexmini_2", "yandexstation_2"):
+for name in ("bergamot", "plum", "yandexplum", "yandexmini_2", "yandexstation_2"):
     assert by_target[name]["config"] == full, name
 assert by_target["yandexmicro"]["config"] == {
     "voice": True,
@@ -94,7 +94,8 @@ assert set(pickle["extra_files"]) == {
     "bin/shairport-sync-ap2-aarch64",
     "lib/aarch64/libplist-2.0.so.3",
 }
-assert pickle["config"] == by_target["bergamot"]["config"]
+assert pickle["config"]["native_player"] is False
+assert pickle["config"]["alice_button"] is False
 
 for target in matrix["targets"]:
     launch = module.render_launcher(template, target)
