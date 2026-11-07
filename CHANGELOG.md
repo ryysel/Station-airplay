@@ -1,3 +1,12 @@
+## Unreleased
+
+- Enable shared controls for Mini 3 (`bergamot`): voice transport, native
+  volume, speech ducking, LED indication, native player and Alice-button
+  pause/resume. Reliable bidirectional volume on the tested firmware requires
+  the corresponding Luna native-volume qualification; Mini 3 Pro stays
+  audio-only. See `docs/validation/MINI3_20261107.md` for hardware validation
+  and limits.
+
 ## 2.1.1
 
 - Add a Mini 3 Pro (`pickle`) `.yampkg` built from the Mini 3 base with the

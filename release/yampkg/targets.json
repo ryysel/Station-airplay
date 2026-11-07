@@ -3,7 +3,7 @@
   "targets": [
     {
       "target": "bergamot",
-      "controls_config": false,
+      "controls_config": true,
       "sleep": [10],
       "dbus_export": true,
       "mango_guard": false,
@@ -13,8 +13,8 @@
         "ducking": true,
         "leds": true,
         "led_level": 200,
-        "native_player": false,
-        "alice_button": false
+        "native_player": true,
+        "alice_button": true
       }
     },
     {
