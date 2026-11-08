@@ -273,7 +273,9 @@ func avahiConfig(root, st string, p stationProfile) (string, error) {
 host-name=%s
 use-ipv4=yes
 use-ipv6=no
-allow-interfaces=wlan0
+# No allow-interfaces: watch every interface, not only wlan0. Stations with
+# USB-Ethernet (OTG adapters) keep advertising when Wi-Fi drops, and clients
+# on the wired segment can discover the receiver directly.
 disallow-other-stacks=no
 enable-dbus=yes
 [wide-area]
