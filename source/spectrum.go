@@ -37,6 +37,10 @@ const (
 	coverScanInterval = 100 * time.Millisecond
 	// solidMinValue keeps a dim artwork readable on a solid indication.
 	solidMinValue = .45
+	// solidFullValue lifts a dim artwork to the top of the range. The original
+	// Mini's logo runs at the driver's stock current and reads as underdriven
+	// at 45%, so its cover is painted at full value instead.
+	solidFullValue = 1
 
 	// Owner-tuned on 2026-11-11: +22% saturation and a slightly higher bar
 	// floor. Greys and cream still stay neutral.
@@ -64,6 +68,10 @@ type spectrumTap struct {
 	blackFloor float64
 	ceiling    float64
 	satBoost   float64
+	// solidFloor is the value a dim artwork is lifted to on a solid frame.
+	// Zero keeps solidMinValue; a model whose logo reads as underdriven at
+	// that level raises it (see solidFullValue).
+	solidFloor float64
 	mu         sync.Mutex
 	state      airplayState
 	hue        float64
@@ -406,8 +414,11 @@ func (t *spectrumTap) solidFrame(n int, level uint8) []string {
 	rgb, palette := t.easedArtwork(time.Now())
 	haveColor := t.haveCoverColor
 	gain, neutralBlack := t.gain, t.neutralBlack
-	blackFloor := t.blackFloor
+	blackFloor, lift := t.blackFloor, t.solidFloor
 	t.mu.Unlock()
+	if lift <= 0 {
+		lift = solidMinValue
+	}
 	if !haveColor {
 		return nil
 	}
@@ -420,7 +431,7 @@ func (t *spectrumTap) solidFrame(n int, level uint8) []string {
 	}
 	frame := make([]string, n)
 	if blackArtwork(rgb) {
-		color := solidHex(rgb, gain, scale, neutralBlack, blackFloor)
+		color := solidHex(rgb, gain, scale, neutralBlack, blackFloor, lift)
 		for i := range frame {
 			frame[i] = color
 		}
@@ -430,11 +441,11 @@ func (t *spectrumTap) solidFrame(n int, level uint8) []string {
 		// Spread the cover's clusters over the zones so a logo or ring reads
 		// as the artwork instead of one flat tint.
 		for i := range frame {
-			frame[i] = solidHex(palette[i*len(palette)/n], gain, scale, neutralBlack, blackFloor)
+			frame[i] = solidHex(palette[i*len(palette)/n], gain, scale, neutralBlack, blackFloor, lift)
 		}
 		return frame
 	}
-	color := solidHex(rgb, gain, scale, neutralBlack, blackFloor)
+	color := solidHex(rgb, gain, scale, neutralBlack, blackFloor, lift)
 	for i := range frame {
 		frame[i] = color
 	}
@@ -444,7 +455,10 @@ func (t *spectrumTap) solidFrame(n int, level uint8) []string {
 // solidHex converts one artwork colour to a frame entry. Match the spectrum
 // frame: a black cover stays dark instead of inventing a tint, except on the
 // model whose stock fallback is deliberately blue.
-func solidHex(rgb, gain [3]float64, scale float64, neutralBlack bool, blackFloor float64) string {
+func solidHex(rgb, gain [3]float64, scale float64, neutralBlack bool, blackFloor, lift float64) string {
+	if lift <= 0 {
+		lift = solidMinValue
+	}
 	// A black cover stays off, keeps the stock dark fallback on Mini 2, or
 	// glows faint violet on Station 2 and Lite 2; only a real artwork colour
 	// is lifted.
@@ -460,8 +474,8 @@ func solidHex(rgb, gain [3]float64, scale float64, neutralBlack bool, blackFloor
 	}
 	// A dark cover still has to read as its hue on the LEDs: lift the value
 	// to the visibility floor, the way the artwork tint is meant to be seen.
-	if v := math.Max(rgb[0], math.Max(rgb[1], rgb[2])); !dark && v > 0 && v < solidMinValue {
-		k := solidMinValue / v
+	if v := math.Max(rgb[0], math.Max(rgb[1], rgb[2])); !dark && v > 0 && v < lift {
+		k := lift / v
 		rgb = [3]float64{rgb[0] * k, rgb[1] * k, rgb[2] * k}
 	}
 	r := math.Min(1, math.Max(0, rgb[0]*gain[0]*scale))

@@ -159,3 +159,26 @@ func TestPaletteHueRejectsUnusableArtwork(t *testing.T) {
 		t.Fatal("oversize accepted")
 	}
 }
+
+// The original Mini paints a dark cover at full value: at the driver's stock
+// current a 45% lift reads as underdriven on its six-zone logo.
+func TestMiniSolidFrameUsesFullRange(t *testing.T) {
+	tap := newSpectrumTap(t.TempDir())
+	tap.mu.Lock()
+	tap.coverColor = [3]float64{32.0 / 255, 0, 0}
+	tap.haveCoverColor = true
+	tap.solidFloor = solidFullValue
+	tap.mu.Unlock()
+	for _, zone := range tap.solidFrame(6, 200) {
+		if zone != "#FF0000" {
+			t.Fatalf("zone %q, want the hue at full value", zone)
+		}
+	}
+	// The tuned floor still applies where a model did not raise it.
+	tap.mu.Lock()
+	tap.solidFloor = 0
+	tap.mu.Unlock()
+	if got := tap.solidFrame(6, 200)[0]; got != "#720000" {
+		t.Fatalf("default floor painted %q", got)
+	}
+}
