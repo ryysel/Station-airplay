@@ -68,7 +68,11 @@ func TestSharedProfilesKeepProvenAudioContract(t *testing.T) {
 				t.Fatal("Station 3 must use the packaged armhf D-Bus")
 			}
 			conf := receiverConfig(p)
-			for _, s := range []string{tc.pcm, tc.icon, "port = 5000", "output_rate = 48000", "output_channels = 2", "session_timeout = 60"} {
+			port := "port = 5000"
+			if tc.model == "yandexstation_3" {
+				port = "port = 7000"
+			}
+			for _, s := range []string{tc.pcm, tc.icon, port, "output_rate = 48000", "output_channels = 2", "session_timeout = 60"} {
 				if !strings.Contains(conf, s) {
 					t.Fatalf("lost known-working setting %q", s)
 				}
@@ -334,7 +338,7 @@ func TestControlsDoNotSilentlyLoseTheirLoopToUpstreamDisplay(t *testing.T) {
 			t.Fatal(model, err)
 		}
 	}
-	for _, model := range []string{"yandexmini_3_pro", "yandexstation_3"} {
+	for _, model := range []string{"yandexmini_3_pro"} {
 		p, ok := profileFor(model)
 		if !ok {
 			t.Fatal(model)
@@ -343,12 +347,20 @@ func TestControlsDoNotSilentlyLoseTheirLoopToUpstreamDisplay(t *testing.T) {
 			t.Fatal("unsupported controls enabled", model)
 		}
 	}
+	station3, ok := profileFor("yandexstation_3")
+	if !ok {
+		t.Fatal("yandexstation_3")
+	}
+	if err := validateControlRenderer(station3, &controlsConfig{}); err != nil {
+		t.Fatal(err)
+	}
 }
 
 // The original Mini on Luna 0.2.26 advertises speech, commands, LED and
 // native player in /media, so its packaged D-Bus bridge carries the same
-// shared controls as the other ARMhf profiles. Station 3 and Mini 3 Pro keep
-// the audio-only gate.
+// shared controls as the other ARMhf profiles. Station 3 uses that same
+// gate. Mini 3 Pro stays audio-only: its receiver is the unqualified
+// AArch64 build.
 func TestOriginalMiniSharesControlsOnPackagedDBus(t *testing.T) {
 	full := &controlsConfig{NativeVolume: true, Voice: true, Ducking: true, LEDs: true, NativePlayer: true, AliceButton: true}
 	for _, model := range []string{"yandexmini", "YandexStationMini"} {
@@ -366,7 +378,7 @@ func TestOriginalMiniSharesControlsOnPackagedDBus(t *testing.T) {
 			t.Fatalf("%s audio contract changed: %+v", model, p)
 		}
 	}
-	for _, model := range []string{"yandexstation_3", "yandexmini_3_pro"} {
+	for _, model := range []string{"yandexmini_3_pro"} {
 		p, ok := profileFor(model)
 		if !ok {
 			t.Fatal(model)
@@ -377,6 +389,20 @@ func TestOriginalMiniSharesControlsOnPackagedDBus(t *testing.T) {
 		if err := validateControlRenderer(p, full); err == nil {
 			t.Fatalf("%s accepted unqualified controls", model)
 		}
+	}
+	station3, ok := profileFor("yandexstation_3")
+	if !ok || !station3.sharedControls || !station3.packagedDBus {
+		t.Fatalf("Station 3 lost the packaged-D-Bus control profile: %+v", station3)
+	}
+	if err := validateControlRenderer(station3, full); err != nil {
+		t.Fatalf("Station 3 rejected shared controls: %v", err)
+	}
+	if station3.airplayModel != "AudioAccessory5,1" || profileRTSPPort(station3) != 7000 {
+		t.Fatalf("Station 3 lost AirPlay 2 identity: %+v", station3)
+	}
+	conf := receiverConfig(station3)
+	if !strings.Contains(conf, "port = 7000") || !strings.Contains(conf, `interface = "wlan0"`) || strings.Contains(conf, `service_type = "classic"`) {
+		t.Fatalf("Station 3 conf is not AirPlay 2: %s", conf)
 	}
 }
 

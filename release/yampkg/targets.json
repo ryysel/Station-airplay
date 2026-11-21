@@ -108,10 +108,8 @@
     },
     {
       "target": "orion",
-      "controls_config": false,
+      "controls_config": true,
       "sleep": [
-        10,
-        4
       ],
       "dbus_export": true,
       "mango_guard": false,

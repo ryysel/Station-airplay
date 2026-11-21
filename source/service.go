@@ -226,6 +226,15 @@ type stationProfile struct {
 	// feature the host does not advertise, so an older Luna degrades instead of
 	// failing the whole service.
 	sharedControls bool
+	// rtspPort is the AirPlay RTSP listen port. Zero means 5000, the shared
+	// package default. Station 3 advertises 7000, the AirPlay 2 port iOS
+	// already caches from the stock Orion receiver.
+	rtspPort int
+	// mdnsOwnAddresses: keep AirPlay off the p2p0 APIPA address. Orion's
+	// platform mDNS also advertises 169.254; iOS tries that first and waits
+	// ~60s for ARP/SYN timeout. Avahi stays on the stock hostname so the
+	// two responders do not rename-loop.
+	mdnsOwnAddresses bool
 }
 
 var (
@@ -245,9 +254,10 @@ var (
 		{name: "Yandex Station 2 AirPlay", models: []string{"yandexstation_2"}, pcm: "plug:dmix_spk", quasarCoexist: true, mdnsHostPrefix: "yandex-station-gen2", receiverABI: "armhf", airplayModel: "AudioAccessory1,1"},
 		// Station 3 (orion) reports its own model id. Like the original Mini it
 		// ships no usable system D-Bus daemon, so run the packaged ARMhf one
-		// behind its loader; the receiver and speaker PCM match the other
-		// AirPlay 2 boards.
-		{name: "Yandex Station 3 AirPlay", models: []string{"yandexstation_3"}, pcm: "speakers", quasarCoexist: true, mdnsHostPrefix: "yandex-station-3", receiverABI: "armhf", airplayModel: "AudioAccessory5,1", packagedDBus: true},
+		// behind its loader. sharedControls opens the same gate as Mini:
+		// controlsPreflight still turns off whatever Luna does not advertise,
+		// and a preflight failure keeps the audio receiver up.
+		{name: "Yandex Station 3 AirPlay", models: []string{"yandexstation_3"}, pcm: "speakers", quasarCoexist: true, mdnsHostPrefix: "yandex-station-3", receiverABI: "armhf", airplayModel: "AudioAccessory5,1", packagedDBus: true, sharedControls: true, rtspPort: 7000, mdnsOwnAddresses: true},
 		{name: "Yandex Mini 3 Pro AirPlay", models: []string{"yandexmini_3_pro"}, pcm: "speakers", quasarCoexist: true, mdnsHostPrefix: "Yandex-Station-Mini-3-Pro", receiverABI: "aarch64", airplayModel: "AudioAccessory5,1"},
 		{name: "Yandex Mini 3 AirPlay", models: []string{"yandexmini3", "bergamot"}, pcm: "speakers", quasarCoexist: true, mdnsHostPrefix: "YandexMini3", receiverABI: "armhf", airplayModel: "AudioAccessory5,1"},
 		{name: "Yandex Station Lite AirPlay", models: []string{"yandexmicro"}, pcm: "plug:dmix_spk", quasarCoexist: true, mdnsHostPrefix: "yandexmicro", receiverABI: "armhf", airplayModel: "AudioAccessory5,1"},
@@ -293,12 +303,17 @@ func avahiConfig(root, st string, p stationProfile) (string, error) {
 	if e != nil {
 		return "", e
 	}
+	iface := "allow-interfaces=wlan0\n"
+	aaaa := ""
+	if p.mdnsOwnAddresses {
+		iface += "deny-interfaces=p2p0\n"
+		aaaa = "publish-aaaa-on-ipv4=no\npublish-a-on-ipv6=no\n"
+	}
 	conf := fmt.Sprintf(`[server]
 host-name=%s
 use-ipv4=yes
 use-ipv6=no
-allow-interfaces=wlan0
-disallow-other-stacks=no
+%sdisallow-other-stacks=no
 enable-dbus=yes
 [wide-area]
 enable-wide-area=no
@@ -306,8 +321,8 @@ enable-wide-area=no
 publish-hinfo=no
 publish-workstation=no
 publish-addresses=no
-[rlimits]
-`, host)
+%s[rlimits]
+`, host, iface, aaaa)
 	path := filepath.Join(st, "avahi-daemon.conf")
 	return path, os.WriteFile(path, []byte(conf), 0600)
 }
@@ -358,9 +373,9 @@ func preflight(p stationProfile) error {
 	if !p.quasarCoexist && quasarRunning() {
 		return errors.New("Quasar/Alice is running and may own ALSA. Stop it using the existing AirPlay-only procedure first")
 	}
-	port := 7000
-	if p.pcm != "" {
-		port = 5000
+	port := profileRTSPPort(p)
+	if p.pcm == "" && p.rtspPort == 0 {
+		port = 7000
 	}
 	ln, e := net.Listen("tcp4", fmt.Sprintf(":%d", port))
 	if e != nil {
