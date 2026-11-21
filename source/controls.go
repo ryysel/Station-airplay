@@ -897,6 +897,14 @@ func (c *sharedController) syncVolume(ctx context.Context, s receiverState, now 
 		if !s.Available || s.Client == "" {
 			return nil
 		}
+		if c.device.Model == "yandexstation_3" || c.device.Model == "orion" {
+			c.lastDB = s.DB
+			c.lastNative = native
+			c.pendingNative = -1
+			c.volumeReady = true
+			fmt.Fprintf(os.Stderr, "volume: orion amp=%d%%, stream stays full, phone db=%.2f\n", native, s.DB)
+			return nil
+		}
 		target := percentDB(native)
 		if math.Abs(s.DB-target) > 0.01 {
 			fmt.Fprintf(os.Stderr, "volume: initial publish native=%d%% -> sender db=%.2f\n", native, target)
@@ -916,6 +924,11 @@ func (c *sharedController) syncVolume(ctx context.Context, s receiverState, now 
 	} else if math.Abs(s.DB-c.lastDB) > 0.01 {
 		return c.applySenderVolume(ctx, s, now)
 	} else if native != c.lastNative && !now.Before(c.duckUntil) {
+		if c.device.Model == "yandexstation_3" || c.device.Model == "orion" {
+			c.lastNative = native
+			c.pendingNative = -1
+			return nil
+		}
 		// Two stable observations suppress native transition/quantisation noise.
 		if c.pendingNative == native {
 			if !s.Available {

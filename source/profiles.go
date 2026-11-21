@@ -218,6 +218,78 @@ func profileOutputRate(p stationProfile) int {
 	return 48000
 }
 
+func profileRTSPPort(p stationProfile) int {
+	if p.rtspPort != 0 {
+		return p.rtspPort
+	}
+	return 5000
+}
+
+func wlanAirplayDeviceID() string {
+	for _, nic := range []string{"wlan0", "eth0"} {
+		b, err := os.ReadFile("/sys/class/net/" + nic + "/address")
+		if err != nil {
+			continue
+		}
+		hex := strings.ToUpper(strings.ReplaceAll(strings.TrimSpace(string(b)), ":", ""))
+		if len(hex) == 12 {
+			return hex
+		}
+	}
+	return ""
+}
+
+func profileIsOrion(p stationProfile) bool {
+	for _, m := range p.models {
+		if m == "yandexstation_3" || m == "orion" {
+			return true
+		}
+	}
+	return false
+}
+
+func primaryLANIPv4() string {
+	for _, nic := range []string{"wlan0", "eth0"} {
+		iface, err := net.InterfaceByName(nic)
+		if err != nil {
+			continue
+		}
+		addrs, err := iface.Addrs()
+		if err != nil {
+			continue
+		}
+		for _, a := range addrs {
+			ipnet, ok := a.(*net.IPNet)
+			if !ok {
+				continue
+			}
+			ip := ipnet.IP.To4()
+			if ip == nil || ip.IsLoopback() || ip.IsLinkLocalUnicast() {
+				continue
+			}
+			return ip.String()
+		}
+	}
+	return ""
+}
+
+func silenceOrionP2P() {
+	_ = exec.Command("ip", "link", "set", "p2p0", "down").Run()
+}
+
+func orionBindConfig() string {
+	extra := ` interface = "wlan0";
+ nqptp_shared_memory_interface_name = "/nqptp";
+`
+	if ip := primaryLANIPv4(); ip != "" {
+		extra += fmt.Sprintf(" address = %q;\n", ip)
+	}
+	if hex := wlanAirplayDeviceID(); hex != "" {
+		extra += fmt.Sprintf(" airplay_device_id = 0x%sL;\n", hex)
+	}
+	return extra
+}
+
 func receiverConfig(p stationProfile) string {
 	device := p.pcm
 	meta := `metadata = { enabled = "no"; };`
@@ -227,12 +299,16 @@ func receiverConfig(p stationProfile) string {
 		device = "spk_tee"
 		meta = fmt.Sprintf("metadata = { enabled = \"yes\"; include_cover_art = \"no\"; pipe_name = %q; };", metadataFIFO)
 	}
+	deviceID := ""
+	if profileIsOrion(p) {
+		deviceID = orionBindConfig()
+	}
 	return fmt.Sprintf(`general = {
  name = %q;
  model = %q;
  output_backend = "alsa";
  mdns_backend = "avahi";
- port = 5000;
+ port = %d;
  interpolation = "basic";
  volume_range_db = 50;
  resync_threshold_in_seconds = 0.050;
@@ -244,7 +320,7 @@ func receiverConfig(p stationProfile) string {
  // fast_audio explicitly trades video/multiroom synchronization for a
  // shorter apparent delay; backend buffering is independent of this mode.
  audio_backend_latency_offset_in_seconds = %.1f;
-};
+%s};
 sessioncontrol = { allow_session_interruption = "yes"; session_timeout = 60; };
 alsa = {
  output_device = %q;
@@ -254,7 +330,7 @@ alsa = {
  disable_standby_mode = "never";
 };
 %s
-`, p.name, p.airplayModel, p.latencyOffset(), device, profileOutputRate(p), meta)
+`, p.name, p.airplayModel, profileRTSPPort(p), p.latencyOffset(), deviceID, device, profileOutputRate(p), meta)
 }
 
 // uiAsound is the receiver's private ~/.asoundrc. The file plugin feeds the
@@ -760,6 +836,9 @@ func serveSharedControls(ctx context.Context, p stationProfile, api *yamAPI, d y
 	launch := func(name, bin string, args ...string) error {
 		bin, args = withLegacyRuntime(root, bin, args)
 		return launchWith(name, bin, childEnv(bin), args...)
+	}
+	if profileIsOrion(p) {
+		silenceOrionP2P()
 	}
 	if err = startPrivateMDNS(ctx, root, state, p, childEnv, launch, exits); err != nil {
 		return err
