@@ -130,9 +130,15 @@ func runWithControls(ctx context.Context, sharedAudio bool, controls *controlsCo
 	if err != nil {
 		return err
 	}
-	if controls != nil && orionDevice(d) && controls.LEDs {
-		controls.LEDs = false
-		fmt.Fprintln(os.Stderr, "shared controls: Station 3 ring left to Alice; session LED fill is not implemented")
+	if controls != nil && orionDevice(d) {
+		if controls.LEDs {
+			controls.LEDs = false
+			fmt.Fprintln(os.Stderr, "shared controls: Station 3 ring left to Alice; session LED fill is not implemented")
+		}
+		if controls.NativePlayer {
+			controls.NativePlayer = false
+			fmt.Fprintln(os.Stderr, "shared controls: Station 3 skips native-player pause; it painted Alice's pause glyph after continue/next/back")
+		}
 	}
 	if controls != nil {
 		if err = controlsPreflight(ctx, api, d, controls); err != nil {

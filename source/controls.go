@@ -413,11 +413,13 @@ func (c *sharedController) speech(ctx context.Context, e speechEvent, now time.T
 		// keep the indication (and the session) alive after the sender leaves.
 		c.pausedUntil = time.Time{}
 	}
-	if c.cfg.NativePlayer && c.native != nil && command != "Pause" {
+	if c.cfg.NativePlayer && c.native != nil && command != "Pause" && !orionDevice(c.device) {
 		// Alice also acts on "continue"/"next" herself and can restart her own
 		// player next to AirPlay. Pause it immediately (Player Pause never
 		// touches the sender or her speech output) and keep a bounded handover
 		// armed for a late resume after the utterance.
+		// Station 3: Luna /native-player/pause paints the pause glyph about
+		// once a second for 12s. ClaimSpeech already cancelled her command.
 		if err = c.native.Pause(ctx); err != nil {
 			aliceButtonDebug("native: immediate pause failed: %v", err)
 		} else {
@@ -897,14 +899,6 @@ func (c *sharedController) syncVolume(ctx context.Context, s receiverState, now 
 		if !s.Available || s.Client == "" {
 			return nil
 		}
-		if orionDevice(c.device) {
-			c.lastDB = s.DB
-			c.lastNative = native
-			c.pendingNative = -1
-			c.volumeReady = true
-			fmt.Fprintf(os.Stderr, "volume: orion amp=%d%%, stream stays full, phone db=%.2f\n", native, s.DB)
-			return nil
-		}
 		target := percentDB(native)
 		if math.Abs(s.DB-target) > 0.01 {
 			fmt.Fprintf(os.Stderr, "volume: initial publish native=%d%% -> sender db=%.2f\n", native, target)
@@ -924,11 +918,6 @@ func (c *sharedController) syncVolume(ctx context.Context, s receiverState, now 
 	} else if math.Abs(s.DB-c.lastDB) > 0.01 {
 		return c.applySenderVolume(ctx, s, now)
 	} else if native != c.lastNative && !now.Before(c.duckUntil) {
-		if orionDevice(c.device) {
-			c.lastNative = native
-			c.pendingNative = -1
-			return nil
-		}
 		// Two stable observations suppress native transition/quantisation noise.
 		if c.pendingNative == native {
 			if !s.Available {
