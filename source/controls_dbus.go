@@ -165,13 +165,7 @@ func serveControlsUI(ctx context.Context, bus string, api *yamAPI, d yamDevice, 
 	}
 	station := controlStation(yamControlStation{api: api, volume: volume})
 	ledCount := supportedLEDCount(d)
-	if d.Model == "yandexstation_3" || d.Model == "orion" {
-		// Station 3 already has bulbik on ledfb-ring. The generic session fill
-		// paints a teal ring for the whole AirPlay session and never hands it
-		// back. Volume still goes through Quasar; the 36-LED overlay is later.
-		if cfg.LEDs {
-			fmt.Println("shared controls: Station 3 ring left to Alice; session LED fill is not implemented")
-		}
+	if orionDevice(d) {
 		cfg.LEDs = false
 		ledCount = 0
 		off, done := context.WithTimeout(ctx, 2*time.Second)
@@ -348,7 +342,7 @@ func controlsVolume(ctx context.Context, api *yamAPI, d yamDevice, cfg controlsC
 	if !cfg.NativeVolume {
 		return nil, nil
 	}
-	if d.Model == "yandexstation_3" || d.Model == "orion" {
+	if orionDevice(d) {
 		v, err := newOrionAmpVolume()
 		if err != nil {
 			return nil, err

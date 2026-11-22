@@ -18,7 +18,7 @@ import (
 // controlsDefaultsVersion is bumped whenever a release changes the seeded
 // defaults in a way existing installs should pick up. Missing in the file
 // means version 1 (2.1.4 and older).
-const controlsDefaultsVersion = 5
+const controlsDefaultsVersion = 6
 
 type defaultsRule struct {
 	version  int
@@ -52,6 +52,11 @@ var controlsDefaultsRules = []defaultsRule{
 	{5, "yandexmini", "spectrum_gain_r", 0.7, 1},
 	{5, "yandexmini", "spectrum_gain_g", 0.7, 1},
 	{5, "yandexmini", "spectrum_gain_b", 1.85, 1},
+	// Station 3: the generic session fill stuck the ring teal for the whole
+	// AirPlay session. Alice keeps the ring; existing installs that still
+	// have the seeded true are brought back to false.
+	{6, "yandexstation_3", "leds", true, false},
+	{6, "orion", "leds", true, false},
 }
 
 // migrateControls stamps the file with the current defaults version and

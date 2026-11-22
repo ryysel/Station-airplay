@@ -232,8 +232,9 @@ type stationProfile struct {
 	rtspPort int
 	// mdnsOwnAddresses: keep AirPlay off the p2p0 APIPA address. Orion's
 	// platform mDNS also advertises 169.254; iOS tries that first and waits
-	// ~60s for ARP/SYN timeout. Avahi stays on the stock hostname so the
-	// two responders do not rename-loop.
+	// ~60s for ARP/SYN timeout. Avahi allow-interfaces follows the default
+	// route and deny-interfaces=p2p0, without taking the link down. The
+	// responder keeps the stock hostname so the two stacks do not rename-loop.
 	mdnsOwnAddresses bool
 }
 
@@ -303,7 +304,11 @@ func avahiConfig(root, st string, p stationProfile) (string, error) {
 	if e != nil {
 		return "", e
 	}
-	iface := "allow-interfaces=wlan0\n"
+	allow := "wlan0"
+	if name, _ := primaryLAN(); name != "" {
+		allow = name
+	}
+	iface := fmt.Sprintf("allow-interfaces=%s\n", allow)
 	aaaa := ""
 	if p.mdnsOwnAddresses {
 		iface += "deny-interfaces=p2p0\n"

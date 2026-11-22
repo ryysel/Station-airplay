@@ -15,9 +15,14 @@ import (
 )
 
 // Orion's audible and Alice volume is Quasar's volume_set, the same directive
-// the buttons send. ALSA Master and set_volume.sh only move mixers; Quasar
-// then overwrites them from its own level.
-const orionQuasarConfig = "/system/vendor/quasar/quasar.cfg"
+// the buttons send. Luna /api/volume on current Station 3 firmware writes
+// ALSA Master, which Quasar then overwrites; adding orion to Luna's
+// quasar_volume path is a Luna change. Until that ships, this backend is
+// the one that actually moves the amplifier.
+const (
+	orionQuasarConfig = "/system/vendor/quasar/quasar.cfg"
+	orionVolumeAck    = 800 * time.Millisecond
+)
 
 type orionNativeVolume struct {
 	statePort   int
@@ -55,6 +60,8 @@ func (v *orionNativeVolume) CheckWrite(ctx context.Context) error {
 }
 
 func (v *orionNativeVolume) GetVolume(ctx context.Context) (float64, error) {
+	ctx, cancel := context.WithTimeout(ctx, orionVolumeAck)
+	defer cancel()
 	s, err := orionDial(ctx, v.statePort)
 	if err != nil {
 		return 0, err
@@ -68,7 +75,14 @@ func (v *orionNativeVolume) SetVolume(ctx context.Context, pct int) (float64, er
 		return 0, errors.New("volume must be 0..100")
 	}
 	wanted := int(math.Round(float64(pct)/5)) * 5
-	current, err := v.GetVolume(ctx)
+	ctx, cancel := context.WithTimeout(ctx, orionVolumeAck)
+	defer cancel()
+	state, err := orionDial(ctx, v.statePort)
+	if err != nil {
+		return 0, err
+	}
+	defer state.Close()
+	current, err := orionReadVolume(ctx, state)
 	if err != nil {
 		return 0, err
 	}
@@ -80,20 +94,9 @@ func (v *orionNativeVolume) SetVolume(ctx context.Context, pct int) (float64, er
 		return 0, err
 	}
 	defer control.Close()
-	if deadline, ok := ctx.Deadline(); ok {
-		_ = control.SetWriteDeadline(deadline)
-	} else {
-		_ = control.SetWriteDeadline(time.Now().Add(5 * time.Second))
-	}
-	packet := orionSetFrame(wanted)
-	if _, err = control.Write(packet); err != nil {
+	if _, err = control.Write(orionSetFrame(wanted)); err != nil {
 		return 0, fmt.Errorf("orion volume write: %w", err)
 	}
-	state, err := orionDial(ctx, v.statePort)
-	if err != nil {
-		return 0, err
-	}
-	defer state.Close()
 	for {
 		value, err := orionReadVolume(ctx, state)
 		if err != nil {
@@ -106,15 +109,13 @@ func (v *orionNativeVolume) SetVolume(ctx context.Context, pct int) (float64, er
 }
 
 func orionDial(ctx context.Context, port int) (net.Conn, error) {
-	dialer := net.Dialer{Timeout: 5 * time.Second}
+	var dialer net.Dialer
 	conn, err := dialer.DialContext(ctx, "tcp", net.JoinHostPort("127.0.0.1", strconv.Itoa(port)))
 	if err != nil {
 		return nil, fmt.Errorf("orion volume connection: %w", err)
 	}
 	if deadline, ok := ctx.Deadline(); ok {
 		_ = conn.SetDeadline(deadline)
-	} else {
-		_ = conn.SetDeadline(time.Now().Add(5 * time.Second))
 	}
 	return conn, nil
 }

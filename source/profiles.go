@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"syscall"
@@ -119,8 +120,8 @@ func runWithControls(ctx context.Context, sharedAudio bool, controls *controlsCo
 	fmt.Fprintf(os.Stderr, "station-airplay: timing mode=%s offset=%.1fs (receiver restart required to change)\n",
 		p.timingMode, p.latencyOffset())
 	// A model whose control profile is not qualified still has to play audio:
-	// Station 3 and Mini 3 Pro have no qualified shared-control transport, and
-	// refusing to start left them with a dead plugin.
+	// Mini 3 Pro has no qualified shared-control transport, and refusing to
+	// start left it with a dead plugin. Station 3 shares the Mini gate.
 	if err = validateControlRenderer(p, controls); err != nil {
 		fmt.Fprintf(os.Stderr, "station-airplay: shared controls disabled: %v\n", err)
 		controls = nil
@@ -128,6 +129,10 @@ func runWithControls(ctx context.Context, sharedAudio bool, controls *controlsCo
 	p, err = profileWithRoom(p, d.Room)
 	if err != nil {
 		return err
+	}
+	if controls != nil && orionDevice(d) && controls.LEDs {
+		controls.LEDs = false
+		fmt.Fprintln(os.Stderr, "shared controls: Station 3 ring left to Alice; session LED fill is not implemented")
 	}
 	if controls != nil {
 		if err = controlsPreflight(ctx, api, d, controls); err != nil {
@@ -225,18 +230,8 @@ func profileRTSPPort(p stationProfile) int {
 	return 5000
 }
 
-func wlanAirplayDeviceID() string {
-	for _, nic := range []string{"wlan0", "eth0"} {
-		b, err := os.ReadFile("/sys/class/net/" + nic + "/address")
-		if err != nil {
-			continue
-		}
-		hex := strings.ToUpper(strings.ReplaceAll(strings.TrimSpace(string(b)), ":", ""))
-		if len(hex) == 12 {
-			return hex
-		}
-	}
-	return ""
+func orionDevice(d yamDevice) bool {
+	return d.Model == "yandexstation_3" || d.Model == "orion"
 }
 
 func profileIsOrion(p stationProfile) bool {
@@ -248,44 +243,107 @@ func profileIsOrion(p stationProfile) bool {
 	return false
 }
 
-func primaryLANIPv4() string {
-	for _, nic := range []string{"wlan0", "eth0"} {
-		iface, err := net.InterfaceByName(nic)
-		if err != nil {
+func ifaceMAC(name string) string {
+	b, err := os.ReadFile("/sys/class/net/" + name + "/address")
+	if err != nil {
+		return ""
+	}
+	hex := strings.ToUpper(strings.ReplaceAll(strings.TrimSpace(string(b)), ":", ""))
+	if len(hex) != 12 {
+		return ""
+	}
+	return hex
+}
+
+func ifaceIPv4(name string) string {
+	iface, err := net.InterfaceByName(name)
+	if err != nil {
+		return ""
+	}
+	addrs, err := iface.Addrs()
+	if err != nil {
+		return ""
+	}
+	for _, a := range addrs {
+		ipnet, ok := a.(*net.IPNet)
+		if !ok {
 			continue
 		}
-		addrs, err := iface.Addrs()
-		if err != nil {
+		ip := ipnet.IP.To4()
+		if ip == nil || ip.IsLoopback() || ip.IsLinkLocalUnicast() {
 			continue
 		}
-		for _, a := range addrs {
-			ipnet, ok := a.(*net.IPNet)
-			if !ok {
-				continue
-			}
-			ip := ipnet.IP.To4()
-			if ip == nil || ip.IsLoopback() || ip.IsLinkLocalUnicast() {
-				continue
-			}
-			return ip.String()
-		}
+		return ip.String()
 	}
 	return ""
 }
 
-func silenceOrionP2P() {
-	_ = exec.Command("ip", "link", "set", "p2p0", "down").Run()
+func parseDefaultRoute(text string) string {
+	best, metric := "", int(^uint(0)>>1)
+	for i, line := range strings.Split(text, "\n") {
+		fields := strings.Fields(line)
+		if i == 0 || len(fields) < 8 || fields[1] != "00000000" {
+			continue
+		}
+		name := fields[0]
+		if name == "lo" || name == "p2p0" {
+			continue
+		}
+		n, err := strconv.Atoi(fields[6])
+		if err != nil {
+			continue
+		}
+		if n < metric {
+			best, metric = name, n
+		}
+	}
+	return best
+}
+
+func defaultRouteInterface() string {
+	b, err := os.ReadFile("/proc/net/route")
+	if err != nil {
+		return ""
+	}
+	return parseDefaultRoute(string(b))
+}
+
+func primaryLAN() (name, ipv4 string) {
+	if iface := defaultRouteInterface(); iface != "" {
+		if ip := ifaceIPv4(iface); ip != "" {
+			return iface, ip
+		}
+		return iface, ""
+	}
+	for _, nic := range []string{"wlan0", "eth0"} {
+		if ip := ifaceIPv4(nic); ip != "" {
+			return nic, ip
+		}
+	}
+	return "", ""
 }
 
 func orionBindConfig() string {
-	extra := ` interface = "wlan0";
- nqptp_shared_memory_interface_name = "/nqptp";
+	extra := ` nqptp_shared_memory_interface_name = "/nqptp";
 `
-	if ip := primaryLANIPv4(); ip != "" {
+	name, ip := primaryLAN()
+	if name != "" {
+		extra += fmt.Sprintf(" interface = %q;\n", name)
+	}
+	if ip != "" {
 		extra += fmt.Sprintf(" address = %q;\n", ip)
 	}
-	if hex := wlanAirplayDeviceID(); hex != "" {
-		extra += fmt.Sprintf(" airplay_device_id = 0x%sL;\n", hex)
+	if name != "" {
+		if hex := ifaceMAC(name); hex != "" {
+			extra += fmt.Sprintf(" airplay_device_id = 0x%sL;\n", hex)
+			return extra
+		}
+	}
+	for _, nic := range []string{"wlan0", "eth0"} {
+		if hex := ifaceMAC(nic); hex != "" {
+			extra += fmt.Sprintf(" airplay_device_id = 0x%sL;\n", hex)
+			break
+		}
 	}
 	return extra
 }
@@ -836,9 +894,6 @@ func serveSharedControls(ctx context.Context, p stationProfile, api *yamAPI, d y
 	launch := func(name, bin string, args ...string) error {
 		bin, args = withLegacyRuntime(root, bin, args)
 		return launchWith(name, bin, childEnv(bin), args...)
-	}
-	if profileIsOrion(p) {
-		silenceOrionP2P()
 	}
 	if err = startPrivateMDNS(ctx, root, state, p, childEnv, launch, exits); err != nil {
 		return err

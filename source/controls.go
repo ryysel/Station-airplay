@@ -897,7 +897,7 @@ func (c *sharedController) syncVolume(ctx context.Context, s receiverState, now 
 		if !s.Available || s.Client == "" {
 			return nil
 		}
-		if c.device.Model == "yandexstation_3" || c.device.Model == "orion" {
+		if orionDevice(c.device) {
 			c.lastDB = s.DB
 			c.lastNative = native
 			c.pendingNative = -1
@@ -924,7 +924,7 @@ func (c *sharedController) syncVolume(ctx context.Context, s receiverState, now 
 	} else if math.Abs(s.DB-c.lastDB) > 0.01 {
 		return c.applySenderVolume(ctx, s, now)
 	} else if native != c.lastNative && !now.Before(c.duckUntil) {
-		if c.device.Model == "yandexstation_3" || c.device.Model == "orion" {
+		if orionDevice(c.device) {
 			c.lastNative = native
 			c.pendingNative = -1
 			return nil

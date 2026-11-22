@@ -101,10 +101,14 @@ func startControlPanel(ctx context.Context, c *sharedController, path, socket st
 			return
 		}
 		live := c.output.snapshot(time.Now())
+		zones := []map[string]any{{"id": "artwork", "count": c.ledCount, "supported": c.cfg.LEDs && c.ledCount > 0}}
+		if orionDevice(c.device) {
+			zones = []map[string]any{}
+		}
 		respond(w, 200, map[string]any{"live": live, "preview": c.preview.status(time.Now()), "led_count": c.ledCount,
 			"model": c.device.Model, "defaults": panelDefaults(c.device),
 			"led_level":       currentLEDLevel(c.spectrum, spectrumLEDLevel(c.cfg)),
-			"zones":           []map[string]any{{"id": "artwork", "count": c.ledCount, "supported": c.cfg.LEDs && c.ledCount > 0}},
+			"zones":           zones,
 			"equalizer_scope": "AirPlay only", "settings_apply": "live", "timing_modes": []string{timingSynchronized, timingFastAudio}})
 	})
 	mux.HandleFunc("/preview", func(w http.ResponseWriter, r *http.Request) {

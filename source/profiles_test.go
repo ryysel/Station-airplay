@@ -401,8 +401,21 @@ func TestOriginalMiniSharesControlsOnPackagedDBus(t *testing.T) {
 		t.Fatalf("Station 3 lost AirPlay 2 identity: %+v", station3)
 	}
 	conf := receiverConfig(station3)
-	if !strings.Contains(conf, "port = 7000") || !strings.Contains(conf, `interface = "wlan0"`) || strings.Contains(conf, `service_type = "classic"`) {
+	if !strings.Contains(conf, "port = 7000") || strings.Contains(conf, `service_type = "classic"`) {
 		t.Fatalf("Station 3 conf is not AirPlay 2: %s", conf)
+	}
+	if strings.Contains(conf, `interface = "p2p0"`) {
+		t.Fatalf("Station 3 must not advertise p2p0: %s", conf)
+	}
+}
+
+func TestParseDefaultRouteSkipsP2P(t *testing.T) {
+	table := "Iface\tDestination\tGateway\tFlags\tRefCnt\tUse\tMetric\tMask\n" +
+		"p2p0\t00000000\t00000000\t0001\t0\t0\t100\t00000000\n" +
+		"wlan0\t00000000\t0101A8C0\t0003\t0\t0\t3005\t00000000\n" +
+		"eth0\t00000000\t0101A8C0\t0003\t0\t0\t200\t00000000\n"
+	if got := parseDefaultRoute(table); got != "eth0" {
+		t.Fatalf("default route %q", got)
 	}
 }
 
