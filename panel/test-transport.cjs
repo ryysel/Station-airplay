@@ -1,6 +1,17 @@
 const fs=require('node:fs'),vm=require('node:vm'),assert=require('node:assert/strict');
 const {webcrypto}=require('node:crypto');
 const source=fs.readFileSync(process.argv[2],'utf8');
+const updateSandbox={};
+vm.createContext(updateSandbox);
+vm.runInContext(source+'\nglobalThis.updateTest={readUpdateStatus,updateMessage};',updateSandbox);
+const {readUpdateStatus,updateMessage}=updateSandbox.updateTest;
+const attempt='0123456789abcdef0123456789abcdef';
+const unrelated='ffffffffffffffffffffffffffffffff';
+assert.equal(readUpdateStatus(`APU1 ${attempt} install_failed\nAPU1 ${unrelated} current\nAPU1 ${attempt} updat`,attempt),'install_failed');
+assert.equal(readUpdateStatus(`APU1 ${unrelated} current\n`,attempt),null);
+assert.equal(readUpdateStatus(`APU1 ${attempt} current\n`,attempt),'current');
+assert.equal(readUpdateStatus(`APU1 ${attempt} install_failed_restore_failed\n`,attempt),'install_failed_restore_failed');
+assert.match(updateMessage('install_failed_restore_failed'),/YAM.*Luna/);
 let running=0, log='', executions=0, epoch='test-epoch';
 const records=new Map();
 function reply(request){

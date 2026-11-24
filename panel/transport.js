@@ -54,3 +54,59 @@ function api(path,method='GET',body){
   }
   return task;
 }
+
+const updateMessages={
+  current:'Уже установлена версия из реестра.',
+  updated:'Обновление установлено. Luna приняла команды запуска.',
+  plan_failed:'Не удалось проверить версию в реестре. AirPlay не остановлен.',
+  busy:'Другое обновление AirPlay уже выполняется.',
+  launch_failed:'Не удалось запустить обновление.',
+  stop_failed:'Не удалось остановить AirPlay. Установка не началась.',
+  install_failed:'YAM не установил обновление.',
+  verify_failed:'Не удалось подтвердить установленную версию.',
+  restore_failed:'Обновление установлено, но Luna не подтвердила запуск.',
+  interrupted:'Обновление прервано.'
+};
+function readUpdateStatus(text,attempt){
+  const prefix='APU1 '+attempt+' ';
+  const lines=text.split('\n').slice(0,-1);
+  for(let i=lines.length-1;i>=0;i--){
+    if(!lines[i].startsWith(prefix))continue;
+    const status=lines[i].slice(prefix.length).trim();
+    if(Object.hasOwn(updateMessages,status)||status==='pending')return status;
+    if(status.endsWith('_restore_failed')&&Object.hasOwn(updateMessages,status.slice(0,-15)))return status;
+  }
+  return null;
+}
+function updateMessage(status){
+  return updateMessages[status]||updateMessages[status.slice(0,-15)]+' Luna не подтвердила повторный запуск.';
+}
+async function invokeUpdate(request){
+  return fetch('/api/plugins/airplay.panel-command/invoke',{
+    method:'POST',headers:{'Content-Type':'application/json','X-Luna-Local':'1'},
+    body:JSON.stringify({args:[JSON.stringify(request)]}),signal:AbortSignal.timeout(8000)
+  });
+}
+async function runPackageUpdate(progress){
+  const attempt=requestID();
+  const started=performance.now();
+  const start=await invokeUpdate({update:true,attempt});
+  if(!start.ok)throw Error('Не удалось запустить обновление: HTTP '+start.status);
+  let nextRead=started+5000;
+  while(performance.now()-started<420000){
+    await new Promise(resolve=>setTimeout(resolve,1000));
+    try{
+      const response=await fetch('/api/plugins/airplay.panel-command/logs',{cache:'no-store',signal:AbortSignal.timeout(8000)});
+      if(response.ok){
+        const status=readUpdateStatus(await response.text(),attempt);
+        if(status&&status!=='pending')return status;
+      }
+      if(performance.now()>=nextRead){
+        nextRead=performance.now()+5000;
+        await invokeUpdate({update_status:true,attempt});
+      }
+    }catch{} // Luna can temporarily reject requests while switching plugins.
+    progress(Math.round((performance.now()-started)/1000));
+  }
+  throw Error('Результат обновления не получен. Проверьте AirPlay в Luna перед повтором.');
+}
