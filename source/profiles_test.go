@@ -411,11 +411,25 @@ func TestOriginalMiniSharesControlsOnPackagedDBus(t *testing.T) {
 
 func TestParseDefaultRouteSkipsP2P(t *testing.T) {
 	table := "Iface\tDestination\tGateway\tFlags\tRefCnt\tUse\tMetric\tMask\n" +
+		"dead0\t00000000\t0101A8C0\t0002\t0\t0\t10\t00000000\n" +
+		"reject0\t00000000\t0101A8C0\t0201\t0\t0\t20\t00000000\n" +
+		"subnet0\t00000000\t00000000\t0001\t0\t0\t30\t000000FF\n" +
 		"p2p0\t00000000\t00000000\t0001\t0\t0\t100\t00000000\n" +
 		"wlan0\t00000000\t0101A8C0\t0003\t0\t0\t3005\t00000000\n" +
 		"eth0\t00000000\t0101A8C0\t0003\t0\t0\t200\t00000000\n"
 	if got := parseDefaultRoute(table); got != "eth0" {
 		t.Fatalf("default route %q", got)
+	}
+}
+
+func TestSelectLANFallsBackWhenDefaultHasNoIPv4(t *testing.T) {
+	addresses := map[string]string{"wlan0": "192.0.2.1", "eth0": "192.0.2.2"}
+	lookup := func(name string) string { return addresses[name] }
+	if name, ip := selectLAN("eth0", lookup); name != "eth0" || ip != addresses["eth0"] {
+		t.Fatalf("default route: %s %s", name, ip)
+	}
+	if name, ip := selectLAN("unavailable", lookup); name != "wlan0" || ip != addresses["wlan0"] {
+		t.Fatalf("fallback: %s %s", name, ip)
 	}
 }
 

@@ -305,8 +305,10 @@ func avahiConfig(root, st string, p stationProfile) (string, error) {
 		return "", e
 	}
 	allow := "wlan0"
-	if name, _ := primaryLAN(); name != "" {
-		allow = name
+	if profileIsOrion(p) {
+		if name, _ := primaryLAN(); name != "" {
+			allow = name
+		}
 	}
 	iface := fmt.Sprintf("allow-interfaces=%s\n", allow)
 	aaaa := ""

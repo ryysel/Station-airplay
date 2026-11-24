@@ -288,18 +288,24 @@ func parseDefaultRoute(text string) string {
 	best, metric := "", int(^uint(0)>>1)
 	for i, line := range strings.Split(text, "\n") {
 		fields := strings.Fields(line)
-		if i == 0 || len(fields) < 8 || fields[1] != "00000000" {
+		if i == 0 || len(fields) < 8 || fields[1] != "00000000" || fields[7] != "00000000" {
 			continue
 		}
 		name := fields[0]
 		if name == "lo" || name == "p2p0" {
 			continue
 		}
+		flags, err := strconv.ParseUint(fields[3], 16, 32)
+		const routeUp = 0x1
+		const routeReject = 0x200
+		if err != nil || flags&routeUp == 0 || flags&routeReject != 0 {
+			continue
+		}
 		n, err := strconv.Atoi(fields[6])
 		if err != nil {
 			continue
 		}
-		if n < metric {
+		if n >= 0 && n < metric {
 			best, metric = name, n
 		}
 	}
@@ -315,14 +321,15 @@ func defaultRouteInterface() string {
 }
 
 func primaryLAN() (name, ipv4 string) {
-	if iface := defaultRouteInterface(); iface != "" {
-		if ip := ifaceIPv4(iface); ip != "" {
-			return iface, ip
+	return selectLAN(defaultRouteInterface(), ifaceIPv4)
+}
+
+func selectLAN(defaultInterface string, ipv4For func(string) string) (name, ipv4 string) {
+	for _, nic := range []string{defaultInterface, "wlan0", "eth0"} {
+		if nic == "" {
+			continue
 		}
-		return iface, ""
-	}
-	for _, nic := range []string{"wlan0", "eth0"} {
-		if ip := ifaceIPv4(nic); ip != "" {
+		if ip := ipv4For(nic); ip != "" {
 			return nic, ip
 		}
 	}
