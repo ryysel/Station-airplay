@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/binary"
 	"math"
@@ -35,6 +36,54 @@ func TestOrionVolumeParsesRealFrame(t *testing.T) {
 	}
 	if _, present, err = orionVolume([]byte{8, 1}); err != nil || present {
 		t.Fatalf("unrelated frame: present=%v err=%v", present, err)
+	}
+}
+
+func TestOrionAcknowledgesSetOnOriginalStateSocket(t *testing.T) {
+	listen := func() *net.TCPListener {
+		t.Helper()
+		ln, err := net.ListenTCP("tcp4", &net.TCPAddr{IP: net.IPv4(127, 0, 0, 1)})
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { ln.Close() })
+		ln.SetDeadline(time.Now().Add(2 * time.Second))
+		return ln
+	}
+	state, control := listen(), listen()
+	v := orionNativeVolume{statePort: state.Addr().(*net.TCPAddr).Port, controlPort: control.Addr().(*net.TCPAddr).Port}
+	type result struct {
+		value float64
+		err   error
+	}
+	done := make(chan result, 1)
+	go func() { value, err := v.SetVolume(context.Background(), 54); done <- result{value, err} }()
+	conn, err := state.Accept()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+	conn.SetDeadline(time.Now().Add(2 * time.Second))
+	if _, err = conn.Write(orionVolumeTCP(20, false)); err != nil {
+		t.Fatal(err)
+	}
+	write, err := control.Accept()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer write.Close()
+	write.SetDeadline(time.Now().Add(2 * time.Second))
+	frame, err := orionFrame(write)
+	if err != nil || !bytes.Equal(frame, orionSetFrame(55)[4:]) {
+		t.Fatalf("set frame: %x (%v)", frame, err)
+	}
+	// A stale notification before the real ACK must not satisfy the request.
+	if _, err = conn.Write(append(orionVolumeTCP(20, false), orionVolumeTCP(55, false)...)); err != nil {
+		t.Fatal(err)
+	}
+	got := <-done
+	if got.err != nil || got.value != 55 {
+		t.Fatalf("readback: %v (%v)", got.value, got.err)
 	}
 }
 
