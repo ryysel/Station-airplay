@@ -33,7 +33,11 @@ async function invokePanel(request){
       if(result.status===503)continue;
       if(rpcEpoch && result.epoch!==rpcEpoch)throw Error('AirPlay перезапущен. Обновите страницу.');
       rpcEpoch=result.epoch;
-      if(result.status<200||result.status>=300)throw Error(result.body?.error||'HTTP '+result.status);
+      if(result.status<200||result.status>=300){
+        const error=new Error(result.body?.error||'HTTP '+result.status);
+        error.status=result.status;
+        throw error;
+      }
       return result.body;
     }
     await new Promise(resolve=>setTimeout(resolve,150+Math.random()*150));

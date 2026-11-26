@@ -38,7 +38,7 @@ assert "throw Error($('owner').textContent||" in page,"transport error must rema
 assert "luna-theme" in page and "prefers-color-scheme:dark" in page
 assert '<main class="wrap">' in page and 'class="head"' in page
 assert re.search(r'<label[^>]*hidden[^>]*>Область настройки',page)
-assert {"level","save","cancel","live-strip","live-bands","eq-on","presets","preview","stop"}<=c.ids
+assert {"level","retry-save","dirty","live-strip","live-bands","eq-on","presets","preview","stop"}<=c.ids
 assert "currentLEDLevel" in (root/"source/controls.go").read_text()
 assert "input.tap, input.spectrumLevel" in (root/"source/display.go").read_text()
 with tempfile.TemporaryDirectory() as d:
