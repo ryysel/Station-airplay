@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -46,13 +47,23 @@ func startControlPanel(ctx context.Context, c *sharedController, path, socket st
 		_ = json.NewEncoder(w).Encode(value)
 	}
 	fail := func(w http.ResponseWriter, err error) { respond(w, 400, map[string]any{"error": err.Error()}) }
-	mux.HandleFunc("/settings", func(w http.ResponseWriter, r *http.Request) {
+	settings := func(w http.ResponseWriter, r *http.Request) {
+		versioned := r.URL.Path == "/settings-versioned"
 		settingsMu.Lock()
 		defer settingsMu.Unlock()
 		if r.Method == "GET" {
 			cfg, err := loadControls(path)
 			if err != nil {
 				fail(w, err)
+				return
+			}
+			if versioned {
+				revision, err := settingsRevision(cfg)
+				if err != nil {
+					fail(w, err)
+					return
+				}
+				respond(w, 200, map[string]any{"revision": revision, "settings": cfg})
 				return
 			}
 			respond(w, 200, cfg)
@@ -71,6 +82,26 @@ func startControlPanel(ctx context.Context, c *sharedController, path, socket st
 		if err != nil {
 			fail(w, err)
 			return
+		}
+		if versioned {
+			var update struct {
+				Revision string          `json:"revision"`
+				Settings json.RawMessage `json:"settings"`
+			}
+			if err := json.Unmarshal(data, &update); err != nil {
+				fail(w, err)
+				return
+			}
+			revision, err := settingsRevision(before)
+			if err != nil {
+				fail(w, err)
+				return
+			}
+			if update.Revision != revision {
+				respond(w, http.StatusConflict, map[string]string{"error": "Настройки изменились. Обновите страницу перед сохранением."})
+				return
+			}
+			data = update.Settings
 		}
 		if err = savePanelSettings(path, data); err != nil {
 			fail(w, err)
@@ -93,18 +124,33 @@ func startControlPanel(ctx context.Context, c *sharedController, path, socket st
 		restart := before == nil || next == nil ||
 			before.TimingMode != next.TimingMode ||
 			!reflect.DeepEqual(before.Equalizer, next.Equalizer)
-		respond(w, 200, map[string]any{"saved": true, "restart_required": restart})
-	})
+		result := map[string]any{"saved": true, "restart_required": restart}
+		if versioned {
+			revision, err := settingsRevision(next)
+			if err != nil {
+				fail(w, err)
+				return
+			}
+			result["revision"] = revision
+		}
+		respond(w, 200, result)
+	}
+	mux.HandleFunc("/settings", settings)
+	mux.HandleFunc("/settings-versioned", settings)
 	mux.HandleFunc("/status", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != "GET" {
 			w.WriteHeader(405)
 			return
 		}
 		live := c.output.snapshot(time.Now())
+		zones := []map[string]any{{"id": "artwork", "count": c.ledCount, "supported": c.cfg.LEDs && c.ledCount > 0}}
+		if orionDevice(c.device) {
+			zones = []map[string]any{}
+		}
 		respond(w, 200, map[string]any{"live": live, "preview": c.preview.status(time.Now()), "led_count": c.ledCount,
 			"model": c.device.Model, "defaults": panelDefaults(c.device),
 			"led_level":       currentLEDLevel(c.spectrum, spectrumLEDLevel(c.cfg)),
-			"zones":           []map[string]any{{"id": "artwork", "count": c.ledCount, "supported": c.cfg.LEDs && c.ledCount > 0}},
+			"zones":           zones,
 			"equalizer_scope": "AirPlay only", "settings_apply": "live", "timing_modes": []string{timingSynchronized, timingFastAudio}})
 	})
 	mux.HandleFunc("/preview", func(w http.ResponseWriter, r *http.Request) {
@@ -178,6 +224,15 @@ func panelDefaults(d yamDevice) controlsConfig {
 	return controlsConfig{TimingMode: timingFastAudio, Spectrum: &on, SpectrumGainR: gain[0], SpectrumGainG: gain[1], SpectrumGainB: gain[2],
 		SpectrumBrightness: brightness, SpectrumSaturation: saturation, SpectrumBlackFloor: &floor, SpectrumBlackColor: "#808080", LEDLevel: 200, LEDColorProfile: profile,
 		SpectrumPoints: &points}
+}
+
+// Hash the normalized settings so legacy writes are also visible to versioned clients.
+func settingsRevision(cfg *controlsConfig) (string, error) {
+	data, err := json.Marshal(cfg)
+	if err != nil {
+		return "", err
+	}
+	return fmt.Sprintf("%x", sha256.Sum256(data)), nil
 }
 
 func savePanelSettings(path string, data []byte) error {

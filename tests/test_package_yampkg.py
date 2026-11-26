@@ -45,7 +45,13 @@ assert set(by_target) == {
 # Midi and the original Mini receive the full control set.
 for name in ("yandexmidi", "cucumber", "yandexmini"):
     assert by_target[name]["controls_config"], name
-assert not by_target["orion"]["controls_config"]
+orion = by_target["orion"]
+assert orion["controls_config"] and orion["dbus_export"]
+assert orion["sleep"] == [1]
+for setting in ("voice", "native_volume", "ducking"):
+    assert orion["config"][setting] is True, setting
+for setting in ("leds", "native_player", "alice_button", "spectrum"):
+    assert orion["config"][setting] is False, setting
 assert by_target["bergamot"]["controls_config"]
 assert by_target["yandexmidi"]["config"]["native_player"]
 assert by_target["yandexmidi"]["config"]["alice_button"]

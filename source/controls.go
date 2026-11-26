@@ -413,11 +413,13 @@ func (c *sharedController) speech(ctx context.Context, e speechEvent, now time.T
 		// keep the indication (and the session) alive after the sender leaves.
 		c.pausedUntil = time.Time{}
 	}
-	if c.cfg.NativePlayer && c.native != nil && command != "Pause" {
+	if c.cfg.NativePlayer && c.native != nil && command != "Pause" && !orionDevice(c.device) {
 		// Alice also acts on "continue"/"next" herself and can restart her own
 		// player next to AirPlay. Pause it immediately (Player Pause never
 		// touches the sender or her speech output) and keep a bounded handover
 		// armed for a late resume after the utterance.
+		// Station 3: Luna /native-player/pause paints the pause glyph about
+		// once a second for 12s. ClaimSpeech already cancelled her command.
 		if err = c.native.Pause(ctx); err != nil {
 			aliceButtonDebug("native: immediate pause failed: %v", err)
 		} else {

@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"syscall"
@@ -119,8 +120,8 @@ func runWithControls(ctx context.Context, sharedAudio bool, controls *controlsCo
 	fmt.Fprintf(os.Stderr, "station-airplay: timing mode=%s offset=%.1fs (receiver restart required to change)\n",
 		p.timingMode, p.latencyOffset())
 	// A model whose control profile is not qualified still has to play audio:
-	// Station 3 and Mini 3 Pro have no qualified shared-control transport, and
-	// refusing to start left them with a dead plugin.
+	// Mini 3 Pro has no qualified shared-control transport, and refusing to
+	// start left it with a dead plugin. Station 3 shares the Mini gate.
 	if err = validateControlRenderer(p, controls); err != nil {
 		fmt.Fprintf(os.Stderr, "station-airplay: shared controls disabled: %v\n", err)
 		controls = nil
@@ -128,6 +129,16 @@ func runWithControls(ctx context.Context, sharedAudio bool, controls *controlsCo
 	p, err = profileWithRoom(p, d.Room)
 	if err != nil {
 		return err
+	}
+	if controls != nil && orionDevice(d) {
+		if controls.LEDs {
+			controls.LEDs = false
+			fmt.Fprintln(os.Stderr, "shared controls: Station 3 ring left to Alice; session LED fill is not implemented")
+		}
+		if controls.NativePlayer {
+			controls.NativePlayer = false
+			fmt.Fprintln(os.Stderr, "shared controls: Station 3 skips native-player pause; it painted Alice's pause glyph after continue/next/back")
+		}
 	}
 	if controls != nil {
 		if err = controlsPreflight(ctx, api, d, controls); err != nil {
@@ -137,7 +148,7 @@ func runWithControls(ctx context.Context, sharedAudio bool, controls *controlsCo
 			// The Mini must keep playing even when Luna cannot expose a control
 			// capability (an emulator, an older host, a first boot). The packaged
 			// bridge is an enhancement here, not a startup condition.
-			fmt.Fprintf(os.Stderr, "station-airplay: Mini controls unavailable, continuing audio-only: %v\n", err)
+			fmt.Fprintf(os.Stderr, "station-airplay: shared controls unavailable, continuing audio-only: %v\n", err)
 			controls = nil
 		}
 	}
@@ -218,6 +229,138 @@ func profileOutputRate(p stationProfile) int {
 	return 48000
 }
 
+func profileRTSPPort(p stationProfile) int {
+	if p.rtspPort != 0 {
+		return p.rtspPort
+	}
+	return 5000
+}
+
+func orionDevice(d yamDevice) bool {
+	return d.Model == "yandexstation_3" || d.Model == "orion"
+}
+
+func profileIsOrion(p stationProfile) bool {
+	for _, m := range p.models {
+		if m == "yandexstation_3" || m == "orion" {
+			return true
+		}
+	}
+	return false
+}
+
+func ifaceMAC(name string) string {
+	b, err := os.ReadFile("/sys/class/net/" + name + "/address")
+	if err != nil {
+		return ""
+	}
+	hex := strings.ToUpper(strings.ReplaceAll(strings.TrimSpace(string(b)), ":", ""))
+	if len(hex) != 12 {
+		return ""
+	}
+	return hex
+}
+
+func ifaceIPv4(name string) string {
+	iface, err := net.InterfaceByName(name)
+	if err != nil {
+		return ""
+	}
+	addrs, err := iface.Addrs()
+	if err != nil {
+		return ""
+	}
+	for _, a := range addrs {
+		ipnet, ok := a.(*net.IPNet)
+		if !ok {
+			continue
+		}
+		ip := ipnet.IP.To4()
+		if ip == nil || ip.IsLoopback() || ip.IsLinkLocalUnicast() {
+			continue
+		}
+		return ip.String()
+	}
+	return ""
+}
+
+func parseDefaultRoute(text string) string {
+	best, metric := "", int(^uint(0)>>1)
+	for i, line := range strings.Split(text, "\n") {
+		fields := strings.Fields(line)
+		if i == 0 || len(fields) < 8 || fields[1] != "00000000" || fields[7] != "00000000" {
+			continue
+		}
+		name := fields[0]
+		if name == "lo" || name == "p2p0" {
+			continue
+		}
+		flags, err := strconv.ParseUint(fields[3], 16, 32)
+		const routeUp = 0x1
+		const routeReject = 0x200
+		if err != nil || flags&routeUp == 0 || flags&routeReject != 0 {
+			continue
+		}
+		n, err := strconv.Atoi(fields[6])
+		if err != nil {
+			continue
+		}
+		if n >= 0 && n < metric {
+			best, metric = name, n
+		}
+	}
+	return best
+}
+
+func defaultRouteInterface() string {
+	b, err := os.ReadFile("/proc/net/route")
+	if err != nil {
+		return ""
+	}
+	return parseDefaultRoute(string(b))
+}
+
+func primaryLAN() (name, ipv4 string) {
+	return selectLAN(defaultRouteInterface(), ifaceIPv4)
+}
+
+func selectLAN(defaultInterface string, ipv4For func(string) string) (name, ipv4 string) {
+	for _, nic := range []string{defaultInterface, "wlan0", "eth0"} {
+		if nic == "" {
+			continue
+		}
+		if ip := ipv4For(nic); ip != "" {
+			return nic, ip
+		}
+	}
+	return "", ""
+}
+
+func orionBindConfig() string {
+	extra := ` nqptp_shared_memory_interface_name = "/nqptp";
+`
+	name, ip := primaryLAN()
+	if name != "" {
+		extra += fmt.Sprintf(" interface = %q;\n", name)
+	}
+	if ip != "" {
+		extra += fmt.Sprintf(" address = %q;\n", ip)
+	}
+	if name != "" {
+		if hex := ifaceMAC(name); hex != "" {
+			extra += fmt.Sprintf(" airplay_device_id = 0x%sL;\n", hex)
+			return extra
+		}
+	}
+	for _, nic := range []string{"wlan0", "eth0"} {
+		if hex := ifaceMAC(nic); hex != "" {
+			extra += fmt.Sprintf(" airplay_device_id = 0x%sL;\n", hex)
+			break
+		}
+	}
+	return extra
+}
+
 func receiverConfig(p stationProfile) string {
 	device := p.pcm
 	meta := `metadata = { enabled = "no"; };`
@@ -227,12 +370,16 @@ func receiverConfig(p stationProfile) string {
 		device = "spk_tee"
 		meta = fmt.Sprintf("metadata = { enabled = \"yes\"; include_cover_art = \"no\"; pipe_name = %q; };", metadataFIFO)
 	}
+	deviceID := ""
+	if profileIsOrion(p) {
+		deviceID = orionBindConfig()
+	}
 	return fmt.Sprintf(`general = {
  name = %q;
  model = %q;
  output_backend = "alsa";
  mdns_backend = "avahi";
- port = 5000;
+ port = %d;
  interpolation = "basic";
  volume_range_db = 50;
  resync_threshold_in_seconds = 0.050;
@@ -244,7 +391,7 @@ func receiverConfig(p stationProfile) string {
  // fast_audio explicitly trades video/multiroom synchronization for a
  // shorter apparent delay; backend buffering is independent of this mode.
  audio_backend_latency_offset_in_seconds = %.1f;
-};
+%s};
 sessioncontrol = { allow_session_interruption = "yes"; session_timeout = 60; };
 alsa = {
  output_device = %q;
@@ -254,7 +401,7 @@ alsa = {
  disable_standby_mode = "never";
 };
 %s
-`, p.name, p.airplayModel, p.latencyOffset(), device, profileOutputRate(p), meta)
+`, p.name, p.airplayModel, profileRTSPPort(p), p.latencyOffset(), deviceID, device, profileOutputRate(p), meta)
 }
 
 // uiAsound is the receiver's private ~/.asoundrc. The file plugin feeds the
@@ -477,11 +624,16 @@ func dbusCommand(root string, p stationProfile, tool string) (string, []string) 
 }
 
 // legacyRuntimeLoader reports the bundled armhf loader when a package carries
-// its own libc. Only the original Mini firmware is old enough to need it: its
-// glibc is 2.23 while the rebuilt runtime needs 2.25..2.29. Packages for newer
-// firmware do not contain the loader and keep using the firmware libc.
+// its own libc. Mini uses its bundled loader; Orion needs the fallback only
+// when the firmware has no ARMhf interpreter.
 func legacyRuntimeLoader(root string) string {
 	path := filepath.Join(root, "lib", "ld-linux-armhf.so.3")
+	if _, err := os.Stat("/lib/ld-linux-armhf.so.3"); os.IsNotExist(err) {
+		fallback := filepath.Join(root, "compat-armhf", "ld-linux-armhf.so.3")
+		if info, err := os.Stat(fallback); err == nil && info.Mode().IsRegular() {
+			return fallback
+		}
+	}
 	if info, err := os.Stat(path); err == nil && info.Mode().IsRegular() {
 		return path
 	}
@@ -499,7 +651,11 @@ func withLegacyRuntime(root, bin string, args []string, extraLibs ...string) (st
 	if loader == "" || !strings.HasPrefix(bin, prefix) {
 		return bin, args
 	}
-	libs := append([]string{filepath.Join(root, "lib")}, extraLibs...)
+	libs := []string{filepath.Join(root, "lib")}
+	if filepath.Dir(loader) != libs[0] {
+		libs = append(libs, filepath.Dir(loader))
+	}
+	libs = append(libs, extraLibs...)
 	return loader, append([]string{"--library-path", strings.Join(libs, string(os.PathListSeparator)), bin}, args...)
 }
 
@@ -781,7 +937,11 @@ func serveSharedControls(ctx context.Context, p stationProfile, api *yamAPI, d y
 					firmwareLibs = append(firmwareLibs, filepath.Dir(p.alsaLib))
 				}
 				libraryPath := strings.Join(append([]string{libs}, firmwareLibs...), string(os.PathListSeparator))
-				childEnv = runtimeEnv(env, libraryPath, firmwareALSA(p))
+				alsa := firmwareALSA(p)
+				if loader := legacyRuntimeLoader(root); filepath.Dir(loader) == filepath.Join(root, "compat-armhf") {
+					alsa = filepath.Join(filepath.Dir(loader), "libasound.so.2")
+				}
+				childEnv = runtimeEnv(env, libraryPath, alsa)
 				if alsaConfig != "" {
 					childEnv = append(childEnv, "ALSA_CONFIG_PATH="+alsaConfig)
 				}

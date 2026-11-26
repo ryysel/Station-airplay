@@ -6,8 +6,9 @@
 <div class="head"><div><h1>Цвета и звук</h1><div id="device" class="mut">Подключение…</div></div></div>
 <section class="card"><h2>Состояние</h2><p class="mut">Настройка кольца или логотипа без ADB. Тестовый кадр получает временное владение LED, а не спорит с AirPlay за каждый кадр.</p>
 <label class="fld">Область настройки <select id="scope" class="in"><option value="airplay">AirPlay: обложки, задержка и EQ</option><option value="luna">Luna: общий LED backend, без AirPlay</option></select></label>
-<p id="scope-note" class="mut">Цвета, яркость и эффекты применяются сразу после сохранения. Эквалайзер и режим задержки — после перезапуска.</p>
+<p id="scope-note" class="mut">Настройки сохраняются автоматически. Цвета, яркость и эффекты применяются сразу. Эквалайзер и режим задержки — после перезапуска.</p>
 <div id="message" role="status" aria-live="polite" class="mut"></div>
+<div class="row"><span id="dirty" role="status" class="chip">Загрузка…</span><button id="retry-save" class="btn hid" hidden>Повторить сохранение</button><button id="export-draft" class="btn hid" hidden>Скачать мои настройки</button><button id="reload-settings" class="btn hid" hidden>Загрузить настройки станции</button></div>
 <label class="fld">Выход LED <select id="output-zone" aria-label="Выход LED" class="in"></select></label>
 </section><div class="g2"><section class="card"><h2>Тестовый цвет и зоны</h2>
 <div class="row"><input id="color" aria-label="Цвет" type="color" value="#7950d0"><input id="hex" aria-label="HEX цвет" type="text" value="#7950D0" maxlength="7" class="in"><button class="btn" id="fill">На все зоны</button></div>
@@ -63,7 +64,6 @@
 <section class="card"><h2>Обновление</h2><p class="mut">Ставит свежий пакет из реестра: останавливает приёмник, обновляет пакет и включает всё обратно. AirPlay прервётся на время установки — обычно это 10–40 секунд.</p><div class="row"><button id="update" class="btn pri">Обновить AirPlay</button><span id="update-version" class="mut"></span></div><p id="update-status" class="mut"></p></section>
 <section class="card"><h2>Пресеты</h2><div class="row"><input id="preset-name" aria-label="Имя пресета" type="text" placeholder="Название" maxlength="60" class="in"><button id="store-preset" class="btn pri">Сохранить пресет</button><select id="presets" aria-label="Список пресетов" class="in"></select><button id="load-preset" class="btn">Загрузить</button><button id="delete-preset" class="btn">Удалить</button></div>
 <div class="row"><button id="export" class="btn">Экспорт JSON</button><label class="fld">Импорт <input id="import" class="in" type="file" accept="application/json,.json"></label></div><small>Пресеты хранятся на колонке. Переносятся только параметры цвета, задержки и EQ — не голосовые настройки и не разрешения плагина.</small></section>
-<section class="card"><div class="row"><button id="save" disabled class="btn pri">Сохранить настройки</button><button id="cancel" class="btn">Отменить изменения</button><span id="dirty" class="chip">Загрузка…</span></div><small>Сохранение не перезапускает колонку или плагин: цвета и эффекты подхватываются на ходу. Эквалайзер и режим задержки применяются после перезапуска плагина. Для отката используйте резервные настройки или параметры модели.</small></section>
 </main><script>
 'use strict';
 const $=id=>document.getElementById(id), frequencies=[60,250,1000,4000,12000];
@@ -91,7 +91,44 @@ function tuning(){return {timing_mode:$('timing').value,spectrum:$('spectrum').c
 function defaults(){return Object.assign({spectrum:true,spectrum_gain_r:1,spectrum_gain_g:1,spectrum_gain_b:1,spectrum_brightness:1,spectrum_saturation:1,spectrum_black_floor:0,spectrum_black_color:'#808080',spectrum_points:Object.assign({},pointDefaults),led_level:200,spectrum_mode:'palette',spectrum_eq_intensity:1,timing_mode:'fast_audio',equalizer:{enabled:false,preamp_db:0,bands_db:[0,0,0,0,0]}},serverDefaults);}
 function populate(cfg){const c=Object.assign(defaults(),cfg),pairs={gain0:'spectrum_gain_r',gain1:'spectrum_gain_g',gain2:'spectrum_gain_b',level:'led_level',brightness:'spectrum_brightness',saturation:'spectrum_saturation',floor:'spectrum_black_floor',preamp:'preamp_db'};Object.entries(pairs).forEach(([id,key])=>{if(id==='preamp')return;$(id).value=c[key]??(id==='floor'?0:defaults()[key]);if($(id+'-value'))$(id+'-value').textContent=$(id).value;});$('timing').value=c.timing_mode||'fast_audio';$('spectrum').checked=c.spectrum!==false;$('spectrum-mode').value=c.spectrum_mode==='eq'?'eq':'palette';if(c.spectrum_mode==='eq')$('spectrum').checked=true;$('eq-intensity').value=c.spectrum_eq_intensity||1;$('eq-intensity-value').textContent=$('eq-intensity').value;$('black-color').value=c.spectrum_black_color||'#808080';const pts=c.spectrum_points||{};Object.keys(pointDefaults).forEach(name=>{const el=$('point-'+name);if(el)el.value=(pts[name]||pointDefaults[name]).toUpperCase();});const eq=c.equalizer||defaults().equalizer;$('eq-on').checked=!!eq.enabled;$('preamp').value=eq.preamp_db||0;$('preamp-value').textContent=$('preamp').value;frequencies.forEach((_,i)=>{$('eq'+i).value=(eq.bands_db||[])[i]||0;$('eq'+i+'-value').textContent=$('eq'+i).value;});pattern();}
 /* LIVE_VIEW_MODULE */
-function dirty(){$('dirty').textContent='Не сохранено';$('dirty').classList.add('on');}
+/* AUTOSAVE_MODULE */
+let settingsReady=false, settingsRevision='';
+const autosave=createAutosave({
+  async write(next){
+    const result=await api('settings-versioned','PUT',{revision:settingsRevision,settings:next});
+    if(result.saved)settingsRevision=result.revision;
+    return result;
+  },
+  notify(state,restart,error){
+    const conflict=state==='error'&&error?.status===409;
+    for(const [id,visible] of [['retry-save',state==='error'&&!conflict],['export-draft',conflict],['reload-settings',conflict]]){
+      $(id).hidden=!visible;
+      $(id).classList.toggle('hid',!visible);
+    }
+    $('dirty').textContent=conflict?'Другая вкладка сохранила настройки. Ваши изменения остались в форме: скачайте их перед загрузкой версии станции.':state==='error'?'Не сохранено: '+error.message:
+      state==='saving'?'Сохраняю…':
+      state==='pending'?'Изменения будут сохранены автоматически':
+      restart?'Сохранено. Для аудио-EQ или синхронизации перезапустите AirPlay.':'Сохранено и применено';
+    $('dirty').className='chip'+(state==='error'?' bad':'');
+  }
+});
+$('retry-save').onclick=()=>autosave.retry();
+$('export-draft').onclick=()=>$('export').click();
+let discardDraft=false;
+$('reload-settings').onclick=()=>{
+  if(!confirm('Заменить несохранённые изменения в этой вкладке настройками станции?'))return;
+  discardDraft=true;
+  location.reload();
+};
+function dirty(){
+  if(!settingsReady)return;
+  const next=Object.assign({},original,tuning());
+  if(!$('override-black').checked){delete next.spectrum_black_floor;delete next.spectrum_black_color;}
+  autosave.edit(next);
+}
+window.addEventListener('beforeunload',event=>{
+  if(!discardDraft&&autosave.unsettled()){event.preventDefault();event.returnValue='';}
+});
 async function renew(){if(!running||busy)return;busy=true;try{const request={id:lease,colors:previewFrame()};if(scope==='luna')request.zone=$('output-zone').value;const r=await api('preview','POST',request);lease=r.id;$('sent').textContent=JSON.stringify(r.sent||previewFrame());}catch(e){running=false;clearInterval(heartbeat);message(e.message,true);}finally{busy=false;$('preview').disabled=running||!ledCount;$('stop').disabled=!running;}}
 async function stop(){running=false;clearInterval(heartbeat);if(busy){await new Promise(resolve=>setTimeout(resolve,100));return stop();}try{if(lease)await api('preview','DELETE',{id:lease});lease='';}catch(e){message(e.message+'; аренда истечёт автоматически',true);}finally{$('preview').disabled=!ledCount;$('stop').disabled=true;}}
 async function status(){try{const s=await api('status');serverDefaults=s.defaults||{};const zones=s.zones||[{id:scope==='luna'?'ring':'artwork',count:s.led_count||0,supported:!!s.led_count}];const fingerprint=JSON.stringify(zones);if(zoneSpec!==fingerprint){const old=$('output-zone').value;zoneSpec=fingerprint;$('output-zone').replaceChildren();zones.forEach(z=>{const option=document.createElement('option');option.value=z.id;option.textContent=({ring:'Кольцо',logo:'Логотип',artwork:'Индикация AirPlay'}[z.id]||z.id)+' · '+z.count+' LED'+(z.supported===false?' · недоступно':'');option.disabled=z.supported===false||!z.count;$('output-zone').append(option);});if(zones.some(z=>z.id===old&&z.supported!==false))$('output-zone').value=old;else $('output-zone').value=zones.find(z=>z.supported!==false&&z.count)?.id||'';}$('output-zone').disabled=zones.filter(z=>z.supported!==false&&z.count).length<2;const selected=zones.find(z=>z.id===$('output-zone').value);ledCount=selected?.supported!==false?selected?.count||0:0;$('zone').max=ledCount;if(colors.length!==ledCount)pattern();$('preview').disabled=running||!ledCount;acceptLive(s.live);const p=s.preview;$('owner').textContent=s.unavailable_reason|| (p.active?'Владелец: тестовая панель\n'+(p.allowed?'Вывод разрешён':'Уступили: '+(p.suppressed||'ожидание безопасного состояния'))+(p.last_error?'\nОшибка: '+p.last_error:''):'Владелец: AirPlay / штатная индикация');return s;}catch(e){$('owner').textContent=e.message;return null;}}
@@ -101,15 +138,13 @@ $('color').oninput=e=>setColor(e.target.value);$('hex').onchange=e=>{if(!/^#[0-9
 $('ring').onclick=e=>{if(!ledCount)return;const rect=e.target.getBoundingClientRect(),x=(e.clientX-rect.left)*360/rect.width-180,y=(e.clientY-rect.top)*320/rect.height-150;let angle=(Math.atan2(y,x)+Math.PI/2+2*Math.PI)%(2*Math.PI);$('zone').value=Math.round(angle/(2*Math.PI)*ledCount)%ledCount+1;paint();};
 ['#FF0000','#00FF00','#0000FF','#FFFF00','#FFFFFF','#808080','#000000'].forEach(color=>{const b=document.createElement('button');b.className='chip';b.textContent=color;b.title=color;b.setAttribute('aria-label',color);b.onclick=()=>{$('pattern').value='solid';setColor(color);};$('swatches').append(b);});
 $('preview').onclick=async()=>{running=true;await renew();clearInterval(heartbeat);if(running)heartbeat=setInterval(renew,1000);};$('stop').onclick=stop;
-document.addEventListener('input',e=>{if(!['hex','zone'].includes(e.target.id))dirty();const out=$(e.target.id+'-value');if(out)out.textContent=e.target.value;});
+document.addEventListener('input',e=>{if(/^(level|brightness|saturation|spectrum|eq-intensity|timing|eq-on|preamp|floor|override-black|black-color|gain[0-2]|eq[0-4]|point-.+)$/.test(e.target.id))dirty();const out=$(e.target.id+'-value');if(out)out.textContent=e.target.value;});
 $('spectrum-mode').onchange=()=>{if($('spectrum-mode').value==='eq')$('spectrum').checked=true;dirty();};$('defaults').onclick=()=>{const c=tuning(),d=defaults();for(const k of keys)if(k.startsWith('spectrum')||k==='led_level')c[k]=d[k];populate(c);$('override-black').checked=false;dirty();};$('points-reset').onclick=()=>{for(const name of Object.keys(pointDefaults))$('point-'+name).value=pointDefaults[name];dirty();if(running){clearTimeout(previewDebounce);previewDebounce=setTimeout(renew,180);}};$('flat').onclick=()=>{const c=tuning();c.equalizer=defaults().equalizer;populate(c);dirty();};
-$('cancel').onclick=async()=>{await stop();populate(original);$('dirty').textContent='Восстановлены загруженные значения';};
-$('save').onclick=async()=>{try{const next=Object.assign({},original,tuning());if(!$('override-black').checked){delete next.spectrum_black_floor;delete next.spectrum_black_color;}const result=await api('settings','PUT',next);original=structuredClone(next);$('dirty').classList.remove('on');$('dirty').textContent='Сохранено';if(result.restart_required)message('Цвета применены. Эквалайзер и режим задержки — после перезапуска плагина.');else message('Настройки сохранены и применены.');}catch(e){message(e.message,true);}};
 $('store-preset').onclick=async()=>{try{const name=$('preset-name').value.trim();if(!name)throw Error('Введите имя пресета');presetData[name]=tuning();await api('presets','PUT',presetData);renderPresets();message('Пресет сохранён на колонке');}catch(e){message(e.message,true);}};
 $('load-preset').onclick=()=>{if(presetData[$('presets').value]){populate(Object.assign({},tuning(),safeTuning(presetData[$('presets').value])));dirty();}};
 $('delete-preset').onclick=async()=>{try{delete presetData[$('presets').value];await api('presets','PUT',presetData);renderPresets();}catch(e){message(e.message,true);}};
 $('export').onclick=()=>{const url=URL.createObjectURL(new Blob([JSON.stringify({schema:1,settings:tuning()},null,2)],{type:'application/json'})),a=document.createElement('a');a.href=url;a.download='luna-calibration.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);};
-$('import').onchange=async e=>{try{const file=e.target.files[0];if(!file)return;if(file.size>16384)throw Error('Файл больше 16 КиБ');const data=JSON.parse(await file.text());if(data.schema!==1)throw Error('Неизвестная версия файла');populate(Object.assign({},tuning(),safeTuning(data.settings)));dirty();message('Импортировано в форму; пока не сохранено');}catch(e){message(e.message,true);}};
+$('import').onchange=async e=>{try{const file=e.target.files[0];if(!file)return;if(file.size>16384)throw Error('Файл больше 16 КиБ');const data=JSON.parse(await file.text());if(data.schema!==1)throw Error('Неизвестная версия файла');populate(Object.assign({},tuning(),safeTuning(data.settings)));dirty();message('Импортировано; настройки сохранятся автоматически');}catch(e){message(e.message,true);}};
 $('image').onchange=async e=>{try{const file=e.target.files[0];if(!file)return;if(file.size>10*1024*1024)throw Error('Изображение больше 10 МиБ');const bitmap=await createImageBitmap(file);const canvas=document.createElement('canvas');canvas.width=64;canvas.height=64;const ctx=canvas.getContext('2d');ctx.drawImage(bitmap,0,0,64,64);bitmap.close();const data=ctx.getImageData(0,0,64,64).data;colors=Array.from({length:ledCount},(_,zone)=>{const sum=[0,0,0];let count=0;for(let y=0;y<64;y++)for(let x=Math.floor(zone*64/ledCount);x<Math.max(Math.floor((zone+1)*64/ledCount),Math.floor(zone*64/ledCount)+1);x++){const i=(y*64+Math.min(63,x))*4;for(let c=0;c<3;c++)sum[c]+=data[i+c];count++;}return toHex(sum.map(v=>v/count));});paint();}catch(e){message(e.message,true);}};
 document.addEventListener('visibilitychange',()=>{if(document.hidden&&running)stop();});
 window.addEventListener('pagehide',()=>{running=false;clearInterval(heartbeat);});
@@ -122,7 +157,7 @@ populate=function(cfg){rawPopulate(cfg);$('override-black').checked=Object.hasOw
 document.addEventListener('input',()=>{if(running){clearTimeout(previewDebounce);previewDebounce=setTimeout(renew,180);}});
 $('black-color').addEventListener('input',()=>{if($('pattern').value==='black')pattern();});
 function syncScopeControls(){const native=scope==='luna';$('scope').value=scope;['timing','eq-on','preamp','brightness','saturation','floor','black-color','override-black','spectrum',...frequencies.map((_,i)=>'eq'+i)].forEach(id=>$(id).disabled=native);$('scope-note').textContent=native?'Общий LED backend Luna: работает без AirPlay. Кольцо и логотип выбираются по возможностям устройства. Сохраняется RGB-коррекция клиентов Luna, не самого maind; она может суммироваться с коррекцией плагина.':'Цвета и эффекты применяются сразу; EQ и задержка — после перезапуска.';}
-async function loadPanel(auto=false){stopStatusPoll();$('save').disabled=true;zoneSpec='';try{let s=await status();if(auto&&scope==='airplay'&&(!s||!ledCount)){scope='luna';syncScopeControls();s=await status();}if(!s)throw Error($('owner').textContent||'Нет совместимого backend');original=await api('settings');populate(original);presetData=await api('presets');renderPresets();$('save').disabled=scope==='luna'&&!ledCount;$('dirty').classList.remove('on');$('dirty').textContent='Настройки загружены';message(ledCount?'Готово. Тест LED запускается отдельно.':(s.unavailable_reason||'У этой области нет поддерживаемого LED-выхода'),!ledCount);startStatusPoll();}catch(e){message('Панель недоступна: '+e.message,true);$('dirty').textContent='Проверьте сборку Luna / AirPlay и выбранную область';$('preview').disabled=true;}}
+async function loadPanel(auto=false){stopStatusPoll();settingsReady=false;zoneSpec='';try{let s=await status();if(auto&&scope==='airplay'&&(!s||!ledCount)){scope='luna';syncScopeControls();s=await status();}if(!s)throw Error($('owner').textContent||'Нет совместимого backend');const snapshot=await api('settings-versioned');original=snapshot.settings;settingsRevision=snapshot.revision;populate(original);presetData=await api('presets');renderPresets();settingsReady=scope==='airplay';$('dirty').classList.remove('on');$('dirty').textContent='Настройки загружены';message(ledCount?'Готово. Тест LED запускается отдельно.':(s.unavailable_reason||'У этой области нет поддерживаемого LED-выхода'),!ledCount);startStatusPoll();}catch(e){message('Панель недоступна: '+e.message,true);$('dirty').textContent='Проверьте сборку Luna / AirPlay и выбранную область';$('preview').disabled=true;}}
 $('scope').onchange=async()=>{await stop();scope=$('scope').value;syncScopeControls();await loadPanel();};
 $('output-zone').onchange=async()=>{await stop();await status();pattern();};
 async function pluginState(){const r=await fetch('/api/plugins',{cache:'no-store'});if(!r.ok)throw Error('HTTP '+r.status);const list=await r.json();const item=list.find(p=>p.manifest&&p.manifest.id==='airplay.airplay-luna');return item?{version:item.manifest.version,running:!!item.running}:null;}

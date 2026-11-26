@@ -108,10 +108,9 @@
     },
     {
       "target": "orion",
-      "controls_config": false,
+      "controls_config": true,
       "sleep": [
-        10,
-        4
+        1
       ],
       "dbus_export": true,
       "mango_guard": false,
@@ -119,7 +118,7 @@
         "voice": true,
         "native_volume": true,
         "ducking": true,
-        "leds": true,
+        "leds": false,
         "led_level": 200,
         "native_player": false,
         "alice_button": false,

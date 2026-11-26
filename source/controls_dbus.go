@@ -165,6 +165,13 @@ func serveControlsUI(ctx context.Context, bus string, api *yamAPI, d yamDevice, 
 	}
 	station := controlStation(yamControlStation{api: api, volume: volume})
 	ledCount := supportedLEDCount(d)
+	if orionDevice(d) {
+		cfg.LEDs = false
+		ledCount = 0
+		off, done := context.WithTimeout(ctx, 2*time.Second)
+		_ = station.Off(off)
+		done()
+	}
 	if cfg.LEDs && d.Model == "yandexstation_2" {
 		// Station 2 exposes an 89x1 framebuffer instead of a sysfs ring and YAM
 		// has no framebuffer LED backend. Paint the ring here; a geometry
@@ -334,6 +341,14 @@ func runControlLoop(ctx context.Context, c *sharedController, api *yamAPI, cfg c
 func controlsVolume(ctx context.Context, api *yamAPI, d yamDevice, cfg controlsConfig) (volumeControl, error) {
 	if !cfg.NativeVolume {
 		return nil, nil
+	}
+	if orionDevice(d) {
+		v, err := newOrionAmpVolume()
+		if err != nil {
+			return nil, err
+		}
+		fmt.Printf("station volume: the sender's slider sets the station volume via %s\n", v.Backend())
+		return v, nil
 	}
 	backend := cfg.VolumeBackend
 	isLuna := false

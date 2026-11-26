@@ -154,6 +154,42 @@ func TestMigrateControlsLiteScalesInTheReceiver(t *testing.T) {
 	}
 }
 
+func TestMigrateControlsOrionTurnsOffLEDs(t *testing.T) {
+	path, cfg := writeControlsFile(t, `{
+  "voice": true,
+  "native_volume": true,
+  "ducking": true,
+  "leds": true,
+  "native_player": false,
+  "alice_button": false,
+  "spectrum": false,
+  "defaults_version": 5
+}`)
+	out, err := migrateControls(path, "yandexstation_3", cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out.LEDs {
+		t.Fatal("Station 3 kept session LED fill")
+	}
+	orionPath, orionCfg := writeControlsFile(t, `{"leds": true, "defaults_version": 5}`)
+	orionOut, err := migrateControls(orionPath, "orion", orionCfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if orionOut.LEDs {
+		t.Fatal("orion kept session LED fill")
+	}
+	keptPath, kept := writeControlsFile(t, `{"leds": true, "defaults_version": 5}`)
+	keptOut, err := migrateControls(keptPath, "yandexstation_2", kept)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !keptOut.LEDs {
+		t.Fatal("a Station 3 LED rule touched Station 2")
+	}
+}
+
 func TestMigrateControlsIsIdempotent(t *testing.T) {
 	path, cfg := writeControlsFile(t, `{"leds": false, "spectrum": false}`)
 	if _, err := migrateControls(path, "yandexstation_2", cfg); err != nil {
