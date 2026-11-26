@@ -2,7 +2,7 @@ package main
 
 // Diagnostic log for the Alice button handover. The receiver deployment is
 // read-only apart from /tmp and the plugin data directory, so the log lives in
-// /tmp and is truncated by the supervisor at start.
+// /tmp. It uses the same 128 KiB cap as receiver statistics.
 
 import (
 	"fmt"
@@ -14,20 +14,19 @@ import (
 const aliceButtonDebugPath = "/tmp/station-airplay-button.log"
 
 var (
-	aliceButtonDebugMu   sync.Mutex
-	aliceButtonDebugOnce sync.Once
+	buttonLogOnce sync.Once
+	buttonLog     *boundedLog
 )
 
 func aliceButtonDebug(format string, args ...any) {
-	aliceButtonDebugOnce.Do(func() {
+	buttonLogOnce.Do(func() {
 		_ = os.Remove(aliceButtonDebugPath)
+		f, err := os.OpenFile(aliceButtonDebugPath, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
+		if err == nil {
+			buttonLog = &boundedLog{f: f}
+		}
 	})
-	aliceButtonDebugMu.Lock()
-	defer aliceButtonDebugMu.Unlock()
-	f, err := os.OpenFile(aliceButtonDebugPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
-	if err != nil {
-		return
+	if buttonLog != nil {
+		_, _ = fmt.Fprintf(buttonLog, "%s %s\n", time.Now().Format("15:04:05.000"), fmt.Sprintf(format, args...))
 	}
-	defer f.Close()
-	_, _ = fmt.Fprintf(f, "%s %s\n", time.Now().Format("15:04:05.000"), fmt.Sprintf(format, args...))
 }

@@ -129,6 +129,62 @@ function api(path,method='GET',body){
   return task;
 }
 
+const updateMessages={
+  current:'Уже установлена версия из реестра.',
+  updated:'Обновление установлено. Luna приняла команды запуска.',
+  plan_failed:'Не удалось проверить версию в реестре. AirPlay не остановлен.',
+  busy:'Другое обновление AirPlay уже выполняется.',
+  launch_failed:'Не удалось запустить обновление.',
+  stop_failed:'Не удалось остановить AirPlay. Установка не началась.',
+  install_failed:'YAM не установил обновление.',
+  verify_failed:'Не удалось подтвердить установленную версию.',
+  restore_failed:'Обновление установлено, но Luna не подтвердила запуск.',
+  interrupted:'Обновление прервано.'
+};
+function readUpdateStatus(text,attempt){
+  const prefix='APU1 '+attempt+' ';
+  const lines=text.split('\n').slice(0,-1);
+  for(let i=lines.length-1;i>=0;i--){
+    if(!lines[i].startsWith(prefix))continue;
+    const status=lines[i].slice(prefix.length).trim();
+    if(Object.hasOwn(updateMessages,status)||status==='pending')return status;
+    if(status.endsWith('_restore_failed')&&Object.hasOwn(updateMessages,status.slice(0,-15)))return status;
+  }
+  return null;
+}
+function updateMessage(status){
+  return updateMessages[status]||updateMessages[status.slice(0,-15)]+' Luna не подтвердила повторный запуск.';
+}
+async function invokeUpdate(request){
+  return fetch('/api/plugins/airplay.panel-command/invoke',{
+    method:'POST',headers:{'Content-Type':'application/json','X-Luna-Local':'1'},
+    body:JSON.stringify({args:[JSON.stringify(request)]}),signal:AbortSignal.timeout(8000)
+  });
+}
+async function runPackageUpdate(progress){
+  const attempt=requestID();
+  const started=performance.now();
+  const start=await invokeUpdate({update:true,attempt});
+  if(!start.ok)throw Error('Не удалось запустить обновление: HTTP '+start.status);
+  let nextRead=started+5000;
+  while(performance.now()-started<420000){
+    await new Promise(resolve=>setTimeout(resolve,1000));
+    try{
+      const response=await fetch('/api/plugins/airplay.panel-command/logs',{cache:'no-store',signal:AbortSignal.timeout(8000)});
+      if(response.ok){
+        const status=readUpdateStatus(await response.text(),attempt);
+        if(status&&status!=='pending')return status;
+      }
+      if(performance.now()>=nextRead){
+        nextRead=performance.now()+5000;
+        await invokeUpdate({update_status:true,attempt});
+      }
+    }catch{} // Luna can temporarily reject requests while switching plugins.
+    progress(Math.round((performance.now()-started)/1000));
+  }
+  throw Error('Результат обновления не получен. Проверьте AirPlay в Luna перед повтором.');
+}
+
 function slider(parent,id,label,min,max,step,value){const box=document.createElement('label'),row=document.createElement('span'),out=document.createElement('output'),input=document.createElement('input');box.className='fld';input.className='in';box.htmlFor=id;row.className='row';row.textContent=label;out.id=id+'-value';input.id=id;input.setAttribute('aria-label',label);input.type='range';input.min=min;input.max=max;input.step=step;input.value=value;row.append(out);box.append(row,input);$(parent).append(box);input.addEventListener('input',()=>out.textContent=input.value);out.textContent=value;return input;}
 ['R','G','B'].forEach((c,i)=>{slider('rgb','rgb'+i,c,0,255,1,[121,80,208][i]).addEventListener('input',()=>setColor(toHex([0,1,2].map(j=>+$('rgb'+j).value)),false));slider('gains','gain'+i,'Баланс '+c,.05,4,.05,1);});
 ['H','S','V'].forEach((c,i)=>slider('hsv','hsv'+i,c,i?0:0,i?100:360,1,[258,62,82][i]).addEventListener('input',()=>{const h=+$('hsv0').value/60,s=+$('hsv1').value/100,v=+$('hsv2').value/100;const f=n=>{let k=(n+h)%6;return v-v*s*Math.max(0,Math.min(k,4-k,1));};setColor(toHex([f(5),f(3),f(1)].map(v=>v*255)),true,false);}));
@@ -263,7 +319,21 @@ $('scope').onchange=async()=>{await stop();scope=$('scope').value;syncScopeContr
 $('output-zone').onchange=async()=>{await stop();await status();pattern();};
 async function pluginState(){const r=await fetch('/api/plugins',{cache:'no-store'});if(!r.ok)throw Error('HTTP '+r.status);const list=await r.json();const item=list.find(p=>p.manifest&&p.manifest.id==='airplay.airplay-luna');return item?{version:item.manifest.version,running:!!item.running}:null;}
 async function showVersions(){try{const s=await pluginState();$('update-version').textContent=s?('Сейчас: '+s.version+(s.running?' · работает':' · остановлен')):'Плагин не найден';}catch(e){$('update-version').textContent='';}}
-$('update').onclick=async()=>{const button=$('update'),status=$('update-status');if(button.disabled)return;if(!confirm('Обновить AirPlay из реестра? Приёмник перезапустится, звук прервётся.'))return;let before=null;try{before=await pluginState();}catch{}button.disabled=true;status.textContent='Запускаю обновление…';const started=performance.now();try{const attempt=Array.from(crypto.getRandomValues(new Uint8Array(16)),x=>x.toString(16).padStart(2,'0')).join('');const response=await fetch('/api/plugins/airplay.panel-command/invoke',{method:'POST',headers:{'Content-Type':'application/json','X-Luna-Local':'1'},body:JSON.stringify({args:[JSON.stringify({update:true,attempt})]})});if(!response.ok)throw Error('Включите AirPlay Panel Command: HTTP '+response.status);while(performance.now()-started<420000){await new Promise(r=>setTimeout(r,2000));let now=null;try{now=await pluginState();}catch{continue;}if(!now)continue;if(now.running&&(!before||now.version!==before.version)){status.textContent='Готово: '+now.version;message('AirPlay обновлён до '+now.version+'.');showVersions();return;}if(now.running&&before&&now.version===before.version&&performance.now()-started>60000){status.textContent='Уже актуально: '+now.version;message('Стоит последняя версия '+now.version+'.');showVersions();return;}status.textContent='Устанавливаю… прошло '+Math.round((performance.now()-started)/1000)+' с';}status.textContent='Обновление не подтвердилось за 7 минут. Проверьте плагин в Luna.';}catch(e){status.textContent=e.message;message(e.message,true);}finally{button.disabled=false;}};
+$('update').onclick=async()=>{
+  const button=$('update'),label=$('update-status');
+  if(button.disabled||!confirm('Обновить AirPlay из реестра? Приёмник перезапустится, звук прервётся.'))return;
+  button.disabled=true;
+  label.textContent='Проверяю обновление…';
+  stopStatusPoll();
+  try{
+    if(running||busy)await stop();
+    await rpcQueue.catch(()=>{});
+    const result=await runPackageUpdate(seconds=>label.textContent='Ожидаю результат… '+seconds+' с');
+    label.textContent=updateMessage(result);
+    message(label.textContent,result!=='updated'&&result!=='current');
+  }catch(e){label.textContent=e.message;message(e.message,true);}
+  finally{button.disabled=false;startStatusPoll();showVersions();}
+};
 window.addEventListener('resize',paint);
 showVersions();
 (async()=>{try{const r=await fetch('/api/device');if(r.ok){const d=await r.json();model=d.model||'';$('device').textContent=model+(d.room?' · '+d.room:'');}}catch{}await loadPanel(true);})();
