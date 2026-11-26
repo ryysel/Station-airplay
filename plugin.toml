@@ -1,6 +1,6 @@
 id = "station-airplay"
 name = "Station airplay"
-version = "2.1.20"
+version = "2.1.21"
 entry = "bin/station-airplay"
 description = "Слушайте музыку с iPhone, iPad или Mac на Яндекс Станции через AirPlay 2. Приёмник и веб-панель устанавливаются одним пакетом YAM. Управление громкостью, подсветка и кнопки зависят от модели. Требует Luna 0.2.32+."
 permissions = ["exec", "clock", "led", "ipc.speech", "commands", "media.native", "input.alice"]

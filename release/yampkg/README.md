@@ -130,3 +130,7 @@ python3 tests/test_yampkg_integrity.py
 сети. Они проверяют матрицу из 12 целей, launcher, JSON и `sh -n`. CI
 запускает их на каждый PR. Полная сборка требует `zstd`, GNU `tar`, PyYAML,
 AArch64-файлы runtime и базовый релиз.
+
+### Orion: ARMhf runtime
+
+При сборке `orion` передайте `scripts/package_yampkg.py` параметр `--orion-runtime station-airplay-2.0.9-orion.yampkg`. Архив доступен в [релизе v2.0.9](https://github.com/ryysel/Station-airplay/releases/tag/v2.0.9). Скрипт проверяет закреплённый SHA-256 и включает библиотеки в приватный каталог пакета. На прошивках с системным ARMhf-загрузчиком сохраняется штатный путь; на AArch64 без него используются приватный загрузчик и неупакованные дочерние ELF.

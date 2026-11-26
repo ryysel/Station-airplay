@@ -624,9 +624,8 @@ func dbusCommand(root string, p stationProfile, tool string) (string, []string) 
 }
 
 // legacyRuntimeLoader reports the bundled armhf loader when a package carries
-// its own libc. Only the original Mini firmware is old enough to need it: its
-// glibc is 2.23 while the rebuilt runtime needs 2.25..2.29. Packages for newer
-// firmware do not contain the loader and keep using the firmware libc.
+// its own libc. Mini uses its bundled loader; Orion needs the fallback only
+// when the firmware has no ARMhf interpreter.
 func legacyRuntimeLoader(root string) string {
 	path := filepath.Join(root, "lib", "ld-linux-armhf.so.3")
 	if _, err := os.Stat("/lib/ld-linux-armhf.so.3"); os.IsNotExist(err) {
