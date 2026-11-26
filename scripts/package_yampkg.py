@@ -516,9 +516,29 @@ def find_base(base_dir, name):
     return matches[0]
 
 
+# Last Orion release with the complete ARMhf runtime. Do not copy firmware files.
+ORION_RUNTIME_SHA256 = "9a624b3801cab60ce85aada19383ee692d1a5c558013089248cbaf3d7e298426"
+
+
+def prepare_orion_runtime(plugin, source):
+    if not source or sha256_file(source) != ORION_RUNTIME_SHA256:
+        raise SystemExit("Orion requires --orion-runtime with the verified v2.0.9 Orion package")
+    raw = subprocess.check_output(["zstd", "-dc", str(source)])
+    compat = plugin / "compat-armhf"
+    compat.mkdir(exist_ok=True)
+    with tarfile.open(fileobj=io.BytesIO(raw)) as archive:
+        for relative in PRUNE_RUNTIME:
+            path = compat / Path(relative).name
+            path.write_bytes(archive.extractfile(str(PLUGIN_REL / relative)).read())
+            path.chmod(0o755 if path.name.startswith("ld-linux") else 0o644)
+    # An explicit dynamic loader cannot run UPX-packed children.
+    for name in (*RUNTIME_BINARIES, "avahi-namespace"):
+        copy_payload_file(ROOT / "bin" / name, plugin / "bin" / name, executable=True)
+
+
 def build_target(
     target, base_dir, binary, version, out_dir, force, template, extra_dir,
-    slim=False, upx="upx",
+    slim=False, upx="upx", orion_runtime=None,
 ):
     base_name = target.get("base_target", target["target"])
     base = find_base(base_dir, base_name)
@@ -541,7 +561,10 @@ def build_target(
         packed = []
         if slim:
             reconcile_runtime(plugin, manifest, target)
-            packed = pack_runtime_for_target(plugin, target, upx)
+            if target["target"] != "orion":
+                packed = pack_runtime_for_target(plugin, target, upx)
+        if target["target"] == "orion":
+            prepare_orion_runtime(plugin, orion_runtime)
         postinstall_src = ROOT / "release/yampkg/airplay-postinstall.sh"
         if postinstall_src.is_file():
             postinstall_dst = Path(stage) / "files/bin/airplay-postinstall"
@@ -639,6 +662,7 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--check", action="store_true", help="validate the matrix only")
     parser.add_argument("--base", help="directory with published base .yampkg files")
+    parser.add_argument("--orion-runtime", type=Path, help="verified station-airplay-2.0.9-orion.yampkg for the Orion userspace fallback")
     parser.add_argument("--binary", help="ARMv7 supervisor to embed")
     parser.add_argument(
         "--extra-dir",
@@ -713,6 +737,7 @@ def main(argv=None):
             args.extra_dir,
             slim=bool(upx),
             upx=args.upx,
+            orion_runtime=args.orion_runtime,
         )
         records.append(record)
         print(

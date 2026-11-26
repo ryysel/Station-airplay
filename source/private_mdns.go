@@ -61,11 +61,8 @@ func startPrivateMDNS(ctx context.Context, root, state string, p stationProfile,
 	if err != nil {
 		return err
 	}
-	avahi := []string{filepath.Join(root, "bin/avahi-daemon")}
-	if loader := legacyRuntimeLoader(root); loader != "" {
-		avahi = append([]string{loader, "--library-path", filepath.Join(root, "lib")}, avahi...)
-	}
-	avahiArgs := append([]string{state}, avahi...)
+	daemon, prefix := withLegacyRuntime(root, filepath.Join(root, "bin/avahi-daemon"), nil)
+	avahiArgs := append([]string{state, daemon}, prefix...)
 	avahiArgs = append(avahiArgs, "-f", avahiConf, "--no-drop-root", "--no-chroot", "--no-rlimits", "--no-proc-title")
 	if err = launch("avahi-namespace", filepath.Join(root, "bin/avahi-namespace"), avahiArgs...); err != nil {
 		return err

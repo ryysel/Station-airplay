@@ -148,7 +148,7 @@ func runWithControls(ctx context.Context, sharedAudio bool, controls *controlsCo
 			// The Mini must keep playing even when Luna cannot expose a control
 			// capability (an emulator, an older host, a first boot). The packaged
 			// bridge is an enhancement here, not a startup condition.
-			fmt.Fprintf(os.Stderr, "station-airplay: Mini controls unavailable, continuing audio-only: %v\n", err)
+			fmt.Fprintf(os.Stderr, "station-airplay: shared controls unavailable, continuing audio-only: %v\n", err)
 			controls = nil
 		}
 	}
@@ -629,6 +629,12 @@ func dbusCommand(root string, p stationProfile, tool string) (string, []string) 
 // firmware do not contain the loader and keep using the firmware libc.
 func legacyRuntimeLoader(root string) string {
 	path := filepath.Join(root, "lib", "ld-linux-armhf.so.3")
+	if _, err := os.Stat("/lib/ld-linux-armhf.so.3"); os.IsNotExist(err) {
+		fallback := filepath.Join(root, "compat-armhf", "ld-linux-armhf.so.3")
+		if info, err := os.Stat(fallback); err == nil && info.Mode().IsRegular() {
+			return fallback
+		}
+	}
 	if info, err := os.Stat(path); err == nil && info.Mode().IsRegular() {
 		return path
 	}
@@ -646,7 +652,11 @@ func withLegacyRuntime(root, bin string, args []string, extraLibs ...string) (st
 	if loader == "" || !strings.HasPrefix(bin, prefix) {
 		return bin, args
 	}
-	libs := append([]string{filepath.Join(root, "lib")}, extraLibs...)
+	libs := []string{filepath.Join(root, "lib")}
+	if filepath.Dir(loader) != libs[0] {
+		libs = append(libs, filepath.Dir(loader))
+	}
+	libs = append(libs, extraLibs...)
 	return loader, append([]string{"--library-path", strings.Join(libs, string(os.PathListSeparator)), bin}, args...)
 }
 
@@ -928,7 +938,11 @@ func serveSharedControls(ctx context.Context, p stationProfile, api *yamAPI, d y
 					firmwareLibs = append(firmwareLibs, filepath.Dir(p.alsaLib))
 				}
 				libraryPath := strings.Join(append([]string{libs}, firmwareLibs...), string(os.PathListSeparator))
-				childEnv = runtimeEnv(env, libraryPath, firmwareALSA(p))
+				alsa := firmwareALSA(p)
+				if loader := legacyRuntimeLoader(root); filepath.Dir(loader) == filepath.Join(root, "compat-armhf") {
+					alsa = filepath.Join(filepath.Dir(loader), "libasound.so.2")
+				}
+				childEnv = runtimeEnv(env, libraryPath, alsa)
 				if alsaConfig != "" {
 					childEnv = append(childEnv, "ALSA_CONFIG_PATH="+alsaConfig)
 				}
