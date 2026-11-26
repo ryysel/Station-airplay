@@ -147,10 +147,29 @@ LOG=$RESULT.log
 URL=http://127.0.0.1:8099
 outcome=interrupted
 finish() { printf '%s\n' "$outcome" >"$RESULT.next" && mv -f "$RESULT.next" "$RESULT"; }
-trap finish EXIT
-trap 'exit 1' HUP INT TERM
+needs_restore=0
+cleanup() {
+  trap '' HUP INT TERM
+  trap - EXIT
+  if [ "$needs_restore" = 1 ]; then restore; fi
+  finish || exit 1
+  case "$outcome" in current|updated) exit 0;; *) exit 1;; esac
+}
+trap cleanup EXIT
+trap 'outcome=interrupted; exit 1' HUP INT TERM
 log() { printf '%s\n' "$*" >>"$LOG"; }
 post() { wget -q -O /dev/null -T 20 --header='X-Luna-Local: 1' --header='Content-Type: application/json' --post-data='{}' "$URL$1" 2>/dev/null; }
+restore() {
+  restore_failed=0
+  for plugin in airplay.airplay-luna airplay.panel; do
+    post "/api/plugins/$plugin/service/enable" || restore_failed=1
+    post "/api/plugins/$plugin/service/start" || restore_failed=1
+  done
+  if [ "$restore_failed" -ne 0 ]; then
+    if [ "$outcome" = updated ]; then outcome=restore_failed
+    else outcome="${outcome}_restore_failed"; fi
+  fi
+}
 yam() { "$ROOT/bin/yam" --platform "$MODEL" --profiles "$ROOT/platforms" "$@"; }
 version() { awk '$1=="airplay/airplay-luna" { print $2; exit }'; }
 if [ -z "$MODEL" ] || [ ! -x "$ROOT/bin/yam" ]; then
@@ -171,6 +190,8 @@ if [ "$installed" = "$planned" ]; then
   exit 0
 fi
 
+# A stop may take effect even if its HTTP response is interrupted.
+needs_restore=1
 stop_failed=0
 for plugin in airplay.panel airplay.panel-command airplay.airplay-luna; do
   post "/api/plugins/$plugin/stop" || stop_failed=1
@@ -204,17 +225,6 @@ else
       *) break ;;
     esac
   done
-fi
-# Always request restoration after any stop, including a partial stop or
-# failed installation; don't let it turn an installation failure into success.
-restore_failed=0
-for plugin in airplay.airplay-luna airplay.panel; do
-  post "/api/plugins/$plugin/service/enable" || restore_failed=1
-  post "/api/plugins/$plugin/service/start" || restore_failed=1
-done
-if [ "$restore_failed" -ne 0 ]; then
-  if [ "$outcome" = updated ]; then outcome=restore_failed
-  else outcome="${outcome}_restore_failed"; fi
 fi
 [ "$outcome" = updated ]
 `
