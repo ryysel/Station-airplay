@@ -62,6 +62,34 @@ func TestControlPanelUnixRoutes(t *testing.T) {
 	if response.StatusCode != 200 || read.TimingMode != timingSynchronized {
 		t.Fatal(response.Status, read)
 	}
+	// Two panels read the same revision. A stale full snapshot must not undo the first save.
+	response, err = client.Get("http://localhost/settings-versioned")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var snapshot struct{ Revision string }
+	err = json.NewDecoder(response.Body).Decode(&snapshot)
+	response.Body.Close()
+	if err != nil || snapshot.Revision == "" {
+		t.Fatal(snapshot, err)
+	}
+	for index, want := range []int{200, 409} {
+		timing := []string{"fast_audio", "synchronized"}[index]
+		payload := `{"revision":"` + snapshot.Revision + `","settings":{"timing_mode":"` + timing + `"}}`
+		req, _ := http.NewRequest("PUT", "http://localhost/settings-versioned", strings.NewReader(payload))
+		res, err := client.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		res.Body.Close()
+		if res.StatusCode != want {
+			t.Fatalf("save %d: got %d want %d", index, res.StatusCode, want)
+		}
+	}
+	current, err := loadControls(path)
+	if err != nil || current.TimingMode != timingFastAudio {
+		t.Fatal(current, err)
+	}
 	request, _ := http.NewRequest("POST", "http://localhost/preview", strings.NewReader(`{"colors":["#123456","#123456","#123456"]}`))
 	response, err = client.Do(request)
 	if err != nil {

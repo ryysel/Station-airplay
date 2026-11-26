@@ -43,7 +43,7 @@ func Valid(r Request) bool {
 	switch r.Operation {
 	case "status":
 		return r.Method == "GET"
-	case "settings", "presets":
+	case "settings", "settings-versioned", "presets":
 		return r.Method == "GET" || r.Method == "PUT"
 	case "preview":
 		return r.Method == "POST" || r.Method == "DELETE"
